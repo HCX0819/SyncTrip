@@ -15,10 +15,10 @@ const GOOGLE_CLASSIC_STYLE = {
     "google-maps": {
       type: "raster" as const,
       tiles: [
-        "https://mt0.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-        "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-        "https://mt2.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-        "https://mt3.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+        "https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}",
+        "https://mt1.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}",
+        "https://mt2.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}",
+        "https://mt3.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}",
       ],
       tileSize: 256,
       attribution: "&copy; Google Maps",
@@ -178,15 +178,22 @@ export default function MapView({ places }: Props) {
           );
           map.fitBounds(bounds, { padding: 60, maxZoom: 15 });
         }
+
+        // Keep the canvas in sync when the container is resized (e.g. window maximized)
+        resizeObserver = new ResizeObserver(() => map.resize());
+        resizeObserver.observe(mapContainerRef.current!);
       } catch (err) {
         console.error("Map initialization failed:", err);
       }
     }
 
+    let resizeObserver: ResizeObserver | null = null;
+
     initMap();
 
     return () => {
       isMounted = false;
+      resizeObserver?.disconnect();
       if (
         mapRef.current &&
         typeof (mapRef.current as { remove?: () => void }).remove === "function"

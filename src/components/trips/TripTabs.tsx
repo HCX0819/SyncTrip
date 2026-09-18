@@ -114,12 +114,13 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
         </div>
 
         {/* Member avatars */}
-        <div style={{ display: "flex", gap: "-8px", marginBottom: "12px" }}>
+        <div style={{ display: "flex", marginBottom: "12px" }}>
           {members.slice(0, 8).map((m, i) => (
             <div
               key={m.id}
               title={m.profile?.display_name ?? "Member"}
               style={{
+                position: "relative",
                 width: 28,
                 height: 28,
                 borderRadius: "50%",
@@ -131,12 +132,27 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
                 justifyContent: "center",
                 fontSize: "11px",
                 fontWeight: 500,
+                color: "var(--text-muted)",
                 overflow: "hidden",
-                backgroundImage: m.profile?.avatar_url ? `url(${m.profile.avatar_url})` : undefined,
-                backgroundSize: "cover",
               }}
             >
-              {!m.profile?.avatar_url && (m.profile?.display_name?.[0] ?? "?")}
+              {m.profile?.display_name?.[0]?.toUpperCase() ?? "?"}
+              {m.profile?.avatar_url && (
+                <img
+                  src={m.profile.avatar_url}
+                  alt=""
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              )}
             </div>
           ))}
           {members.length > 8 && (

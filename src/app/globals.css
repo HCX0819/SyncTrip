@@ -34,6 +34,25 @@
   /* Typography */
   --font-sans: "Inter", "Google Sans", system-ui, sans-serif;
   --font-display: "Google Sans", "Inter", system-ui, sans-serif;
+  --font-serif: var(--font-playfair), Georgia, "Times New Roman", serif;
+
+  /* Luxury Noir — warm gold accent */
+  --gold: #d4af37;
+  --gold-dark: #b8912b;
+  --gold-soft: #e8cc6e;
+  --gold-dim: rgba(212, 175, 55, 0.14);
+  --gold-ring: rgba(212, 175, 55, 0.35);
+
+  /* Luxury Noir — near-black warm surface system */
+  --noir-bg: #0a0a0a;
+  --noir-bg-soft: #17140f;
+  --noir-surface: #17140f;
+  --noir-surface-2: #221d15;
+  --noir-border: rgba(245, 241, 234, 0.1);
+  --noir-border-strong: rgba(245, 241, 234, 0.18);
+  --noir-text: #f5f1ea;
+  --noir-text-muted: #a8a29e;
+  --noir-text-light: #7a756e;
 
   --radius-sm: 4px;
   --radius-md: 8px;
@@ -475,4 +494,71 @@ h1, h2, h3 {
   background: var(--blue-light);
   border-color: var(--blue);
   color: var(--blue);
+}
+
+/* ── Luxury Noir theme scope — login (/login) & marketing (/) pages only ──
+   Overrides shared semantic tokens locally so the existing .btn/.input/
+   .card/etc. classes automatically re-theme inside this scope, without
+   touching :root or any other page's appearance. ─────────────────────── */
+.theme-noir {
+  --bg: var(--noir-bg-soft);
+  --surface: var(--noir-surface);
+  --surface-2: var(--noir-surface-2);
+  --border: var(--noir-border);
+  --border-strong: var(--noir-border-strong);
+  --text: var(--noir-text);
+  --text-muted: var(--noir-text-muted);
+  --text-light: var(--noir-text-light);
+
+  --blue: var(--gold);
+  --blue-dark: var(--gold-dark);
+  --blue-light: var(--gold-dim);
+
+  --accent: var(--gold);
+  --accent-dim: var(--gold-dim);
+  --accent-hover: var(--gold-dark);
+
+  background: radial-gradient(ellipse at 50% 20%, var(--noir-bg-soft) 0%, var(--noir-bg) 70%);
+  color: var(--text);
+  min-height: 100dvh;
+}
+
+/* Hardcoded-color leaks inside shared classes that var() overrides above
+   can't reach. */
+.theme-noir .input:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-ring);
+}
+
+.theme-noir .btn-primary {
+  background: var(--gold);
+  color: #17140f;
+}
+.theme-noir .btn-primary:not(:disabled):hover {
+  background: var(--gold-dark);
+  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.25);
+}
+
+.theme-noir .btn-flat {
+  color: var(--noir-text-muted);
+  border-color: var(--noir-border-strong);
+}
+.theme-noir .btn-flat:not(:disabled):hover {
+  background: var(--noir-surface-2);
+  color: var(--noir-text);
+}
+
+.theme-noir .btn-ghost {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+.theme-noir .btn-ghost:not(:disabled):hover {
+  background: var(--gold-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-up-delay {
+    animation: none;
+  }
 }
