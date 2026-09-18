@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SavedPlace } from "@/lib/types";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -82,8 +82,10 @@ export default function MapView({ places }: Props) {
   const [selectedPlace, setSelectedPlace] = useState<SavedPlace | null>(null);
   const [mapTheme, setMapTheme] = useState<MapTheme>("dark");
 
-  const placesWithCoords = places.filter(
-    (p) => p.latitude != null && p.longitude != null
+  // Memoize so the map effect does not re-run (and rebuild the map) on every render
+  const placesWithCoords = useMemo(
+    () => places.filter((p) => p.latitude != null && p.longitude != null),
+    [places]
   );
 
   useEffect(() => {
@@ -124,40 +126,49 @@ export default function MapView({ places }: Props) {
 
         // Add markers for places (styled like Google Maps POI badges)
         placesWithCoords.forEach((place) => {
+          // Outer element is owned by MapLibre: it positions the marker by
+          // writing `translate(...)` into `style.transform`. Never touch its
+          // transform ourselves or the marker jumps to the map origin.
           const el = document.createElement("div");
           el.className = "custom-map-marker";
           el.style.width = "34px";
           el.style.height = "34px";
-          el.style.borderRadius = "50%";
-          el.style.display = "flex";
-          el.style.alignItems = "center";
-          el.style.justifyContent = "center";
           el.style.cursor = "pointer";
-          el.style.boxShadow = "0 3px 12px rgba(0,0,0,0.35)";
-          el.style.border = "2.5px solid #ffffff";
-          el.style.fontSize = "16px";
-          el.style.transition = "transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)";
+
+          // Inner element carries the visuals and the hover scale animation.
+          const badge = document.createElement("div");
+          badge.style.width = "100%";
+          badge.style.height = "100%";
+          badge.style.borderRadius = "50%";
+          badge.style.display = "flex";
+          badge.style.alignItems = "center";
+          badge.style.justifyContent = "center";
+          badge.style.boxShadow = "0 3px 12px rgba(0,0,0,0.35)";
+          badge.style.border = "2.5px solid #ffffff";
+          badge.style.fontSize = "16px";
+          badge.style.transition = "transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)";
+          el.appendChild(badge);
 
           // Google Maps category palette
           if (place.category === "stay") {
-            el.style.background = "#E91E63"; // Pink / Hotel Lodging
-            el.innerText = "🏨";
+            badge.style.background = "#E91E63"; // Pink / Hotel Lodging
+            badge.innerText = "🏨";
           } else if (place.category === "eat") {
-            el.style.background = "#FF7043"; // Orange / Dining
-            el.innerText = "🍜";
+            badge.style.background = "#FF7043"; // Orange / Dining
+            badge.innerText = "🍜";
           } else if (place.category === "do") {
-            el.style.background = "#1E88E5"; // Blue / Activity & Sightseeing
-            el.innerText = "🎯";
+            badge.style.background = "#1E88E5"; // Blue / Activity & Sightseeing
+            badge.innerText = "🎯";
           } else {
-            el.style.background = "#00897B"; // Teal / General POI
-            el.innerText = "📍";
+            badge.style.background = "#00897B"; // Teal / General POI
+            badge.innerText = "📍";
           }
 
           el.addEventListener("mouseenter", () => {
-            el.style.transform = "scale(1.3)";
+            badge.style.transform = "scale(1.3)";
           });
           el.addEventListener("mouseleave", () => {
-            el.style.transform = "scale(1)";
+            badge.style.transform = "scale(1)";
           });
 
           el.addEventListener("click", () => {
