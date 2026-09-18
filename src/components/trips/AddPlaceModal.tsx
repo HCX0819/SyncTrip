@@ -50,47 +50,42 @@ export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  async function handleAddressInput(value: string) {
+  const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const geocodeAbort = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      if (geocodeTimer.current) clearTimeout(geocodeTimer.current);
+      geocodeAbort.current?.abort();
+    },
+    []
+  );
+
+  function handleAddressInput(value: string) {
     setForm((prev) => ({ ...prev, address: value, latitude: null, longitude: null }));
-    if (value.length < 3) {
+    if (geocodeTimer.current) clearTimeout(geocodeTimer.current);
+    geocodeAbort.current?.abort();
+    if (value.trim().length < 3) {
       setAddressSuggestions([]);
+      setGeocoding(false);
       return;
     }
     setGeocoding(true);
-    try {
-      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-      const hasValidCustomToken =
-        token && token.startsWith("pk.") && !token.includes("placeholder");
-
-      if (hasValidCustomToken) {
-        const res = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json?access_token=${token}&types=place,poi,address&limit=5`
-        );
-        const data = await res.json();
-        setAddressSuggestions(data.features ?? []);
-      } else {
-        // Free OpenStreetMap geocoding fallback (no API key required)
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&limit=5`
-        );
-        const data = await res.json();
-        const formatted: MapboxFeature[] = (data || []).map(
-          (item: { place_id: number; display_name: string; name?: string; lat: string; lon: string }) => ({
-            id: String(item.place_id),
-            place_name: item.display_name,
-            text: item.name || item.display_name.split(",")[0],
-            geometry: {
-              coordinates: [parseFloat(item.lon), parseFloat(item.lat)],
-            },
-          })
-        );
-        setAddressSuggestions(formatted);
+    geocodeTimer.current = setTimeout(async () => {
+      const controller = new AbortController();
+      geocodeAbort.current = controller;
+      try {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(value)}`, {
+          signal: controller.signal,
+        });
+        const data: MapboxFeature[] = res.ok ? await res.json() : [];
+        if (!controller.signal.aborted) setAddressSuggestions(data);
+      } catch {
+        if (!controller.signal.aborted) setAddressSuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) setGeocoding(false);
       }
-    } catch {
-      setAddressSuggestions([]);
-    } finally {
-      setGeocoding(false);
-    }
+    }, 400);
   }
 
   function selectSuggestion(f: MapboxFeature) {
