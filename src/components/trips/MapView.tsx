@@ -178,15 +178,22 @@ export default function MapView({ places }: Props) {
           );
           map.fitBounds(bounds, { padding: 60, maxZoom: 15 });
         }
+
+        // Keep the canvas in sync when the container is resized (e.g. window maximized)
+        resizeObserver = new ResizeObserver(() => map.resize());
+        resizeObserver.observe(mapContainerRef.current!);
       } catch (err) {
         console.error("Map initialization failed:", err);
       }
     }
 
+    let resizeObserver: ResizeObserver | null = null;
+
     initMap();
 
     return () => {
       isMounted = false;
+      resizeObserver?.disconnect();
       if (
         mapRef.current &&
         typeof (mapRef.current as { remove?: () => void }).remove === "function"
