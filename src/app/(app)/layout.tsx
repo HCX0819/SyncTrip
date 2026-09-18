@@ -15,7 +15,7 @@ export default async function AppLayout({
   if (!user) redirect("/login");
 
   return (
-    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
+    <div className="noir-canvas" style={{ display: "flex", flexDirection: "column" }}>
       <main style={{ flex: 1 }}>{children}</main>
       <BottomTabBar />
     </div>

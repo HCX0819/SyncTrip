@@ -201,7 +201,7 @@ export default function ItineraryView({ trip, places, onUpdate }: Props) {
               textAlign: "center",
               border: "1px dashed var(--border)",
               borderRadius: "var(--radius-lg)",
-              background: "rgba(255,255,255,0.01)",
+              background: "rgba(245,241,234,0.03)",
             }}
           >
             <div style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.4 }}>📅</div>
