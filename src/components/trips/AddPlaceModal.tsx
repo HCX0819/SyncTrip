@@ -4,6 +4,7 @@ import { useState, useTransition, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Category } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
+import { isGeocodableQuery } from "@/lib/geocode";
 
 interface Props {
   tripId: string;
@@ -65,7 +66,7 @@ export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
     setForm((prev) => ({ ...prev, address: value, latitude: null, longitude: null }));
     if (geocodeTimer.current) clearTimeout(geocodeTimer.current);
     geocodeAbort.current?.abort();
-    if (value.trim().length < 3) {
+    if (!isGeocodableQuery(value)) {
       setAddressSuggestions([]);
       setGeocoding(false);
       return;
@@ -75,7 +76,7 @@ export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
       const controller = new AbortController();
       geocodeAbort.current = controller;
       try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(value)}`, {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(value)}&tripId=${tripId}`, {
           signal: controller.signal,
         });
         const data: MapboxFeature[] = res.ok ? await res.json() : [];
