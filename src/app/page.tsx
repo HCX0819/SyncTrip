@@ -14,6 +14,7 @@ export default async function HomePage() {
 
   return (
     <main
+      className="theme-noir"
       style={{
         minHeight: "100dvh",
         display: "flex",

@@ -2,6 +2,16 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  Map,
+  MapPin,
+  LayoutGrid,
+  ThumbsUp,
+  CalendarDays,
+  MapPinned,
+  MailCheck,
+  AlertCircle,
+} from "lucide-react";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -36,11 +46,11 @@ export default function LoginPage() {
 
   return (
     <main
+      className="theme-noir"
       style={{
         minHeight: "100dvh",
         display: "flex",
         alignItems: "stretch",
-        background: "var(--bg)",
       }}
     >
       {/* Left panel — decorative (hidden on mobile) */}
@@ -50,7 +60,8 @@ export default function LoginPage() {
           flex: 1,
           position: "relative",
           overflow: "hidden",
-          background: "linear-gradient(160deg, #1a73e8 0%, #0d47a1 60%, #1565c0 100%)",
+          background: "linear-gradient(160deg, #17140f 0%, #0a0a0a 65%, #120f0a 100%)",
+          borderRight: "1px solid var(--noir-border)",
         }}
       >
         {/* Top highlight line */}
@@ -61,7 +72,7 @@ export default function LoginPage() {
             left: 0,
             right: 0,
             height: "2px",
-            background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)",
+            background: "linear-gradient(90deg, transparent, rgba(212,175,55,0.35), transparent)",
           }}
         />
         {/* Subtle radial glow */}
@@ -73,25 +84,23 @@ export default function LoginPage() {
             transform: "translate(-50%, -50%)",
             width: 480,
             height: 480,
-            background: "radial-gradient(ellipse, rgba(255,255,255,0.08) 0%, transparent 70%)",
+            background: "radial-gradient(ellipse, rgba(212,175,55,0.06) 0%, transparent 70%)",
             borderRadius: "50%",
           }}
         />
-        {/* Map pin pattern */}
-        <div
+        {/* Map pin watermark */}
+        <MapPin
+          size={220}
+          strokeWidth={0.75}
+          color="var(--gold)"
           style={{
             position: "absolute",
             bottom: "60px",
             right: "40px",
             opacity: 0.08,
-            fontSize: "200px",
-            lineHeight: 1,
             transform: "rotate(-15deg)",
-            userSelect: "none",
           }}
-        >
-          📍
-        </div>
+        />
 
         <div
           style={{
@@ -103,13 +112,14 @@ export default function LoginPage() {
             padding: "64px",
           }}
         >
-          {/* Google Maps style logo badge */}
+          {/* Logo badge */}
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              background: "rgba(255,255,255,0.15)",
+              background: "rgba(212,175,55,0.12)",
+              border: "1px solid rgba(212,175,55,0.3)",
               backdropFilter: "blur(8px)",
               borderRadius: "99px",
               padding: "6px 16px 6px 8px",
@@ -121,63 +131,63 @@ export default function LoginPage() {
               style={{
                 width: 28,
                 height: 28,
-                background: "#ffffff",
+                background: "var(--gold)",
                 borderRadius: "50%",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "14px",
               }}
             >
-              🗺️
+              <Map size={16} color="#17140f" strokeWidth={2} />
             </div>
-            <span style={{ color: "#ffffff", fontSize: "13px", fontWeight: 600, letterSpacing: "0.05em" }}>
+            <span style={{ color: "var(--noir-text)", fontSize: "13px", fontWeight: 600, letterSpacing: "0.05em" }}>
               SYNCTRIP
             </span>
           </div>
 
           <h1
             style={{
+              fontFamily: "var(--font-serif)",
               fontSize: "clamp(36px, 4vw, 52px)",
               fontWeight: 500,
               lineHeight: 1.1,
-              color: "#ffffff",
+              color: "var(--noir-text)",
               marginBottom: "20px",
             }}
           >
             Plan together,
             <br />
-            <span style={{ opacity: 0.85 }}>travel better.</span>
+            <span style={{ color: "var(--gold-soft)" }}>travel better.</span>
           </h1>
-          <p style={{ color: "rgba(255,255,255,0.75)", fontSize: "15px", maxWidth: 320, lineHeight: 1.6 }}>
+          <p style={{ color: "var(--noir-text-muted)", fontSize: "15px", maxWidth: 320, lineHeight: 1.6 }}>
             Save places from anywhere. Vote on favourites. Build the perfect trip — together.
           </p>
 
-          {/* Google Maps-style feature chips */}
+          {/* Feature list */}
           <div style={{ marginTop: "40px", display: "flex", flexDirection: "column", gap: "12px" }}>
             {[
-              { icon: "⊞", label: "Visual moodboard of saved places" },
-              { icon: "👍", label: "Yaay / Naay voting — no arguments" },
-              { icon: "☰", label: "Drag-to-day itinerary builder" },
-              { icon: "◎", label: "Map view of every pin" },
+              { Icon: LayoutGrid, label: "Visual moodboard of saved places" },
+              { Icon: ThumbsUp, label: "Yaay / Naay voting — no arguments" },
+              { Icon: CalendarDays, label: "Drag-to-day itinerary builder" },
+              { Icon: MapPinned, label: "Map view of every pin" },
             ].map((f) => (
               <div key={f.label} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                 <span
                   style={{
                     width: 28,
                     height: 28,
-                    background: "rgba(255,255,255,0.15)",
+                    background: "rgba(212,175,55,0.12)",
+                    border: "1px solid rgba(212,175,55,0.25)",
                     borderRadius: "50%",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: "13px",
                     flexShrink: 0,
                   }}
                 >
-                  {f.icon}
+                  <f.Icon size={14} color="var(--gold)" strokeWidth={2} />
                 </span>
-                <span style={{ color: "rgba(255,255,255,0.85)", fontSize: "14px" }}>{f.label}</span>
+                <span style={{ color: "var(--noir-text-muted)", fontSize: "14px" }}>{f.label}</span>
               </div>
             ))}
           </div>
@@ -207,8 +217,8 @@ export default function LoginPage() {
             marginBottom: "40px",
           }}
         >
-          <span style={{ fontSize: "22px" }}>🗺️</span>
-          <span style={{ fontSize: "16px", fontWeight: 600, color: "var(--blue)", letterSpacing: "0.04em" }}>
+          <Map size={22} color="var(--gold)" />
+          <span style={{ fontSize: "16px", fontWeight: 600, color: "var(--gold)", letterSpacing: "0.04em" }}>
             SYNCTRIP
           </span>
         </div>
@@ -217,6 +227,7 @@ export default function LoginPage() {
           <>
             <h2
               style={{
+                fontFamily: "var(--font-serif)",
                 fontSize: "24px",
                 fontWeight: 500,
                 marginBottom: "6px",
@@ -243,7 +254,7 @@ export default function LoginPage() {
               />
               {error && (
                 <p style={{ color: "var(--red)", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  ⚠ {error}
+                  <AlertCircle size={14} /> {error}
                 </p>
               )}
               <button
@@ -293,7 +304,7 @@ export default function LoginPage() {
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = "var(--surface-2)";
-                e.currentTarget.style.boxShadow = "var(--shadow-md)";
+                e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.4)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = "var(--surface)";
@@ -334,13 +345,13 @@ export default function LoginPage() {
                 alignItems: "center",
                 justifyContent: "center",
                 margin: "0 auto 24px",
-                fontSize: "28px",
               }}
             >
-              ✉
+              <MailCheck size={28} color="var(--gold)" />
             </div>
             <h2
               style={{
+                fontFamily: "var(--font-serif)",
                 fontSize: "22px",
                 fontWeight: 500,
                 marginBottom: "10px",
