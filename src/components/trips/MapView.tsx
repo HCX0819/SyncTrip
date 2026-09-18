@@ -80,7 +80,7 @@ export default function MapView({ places }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<unknown>(null);
   const [selectedPlace, setSelectedPlace] = useState<SavedPlace | null>(null);
-  const [mapTheme, setMapTheme] = useState<MapTheme>("google");
+  const [mapTheme, setMapTheme] = useState<MapTheme>("dark");
 
   const placesWithCoords = places.filter(
     (p) => p.latitude != null && p.longitude != null
@@ -215,7 +215,7 @@ export default function MapView({ places }: Props) {
         width: "100%",
         flex: 1,             // grow to fill parent flex column
         minHeight: 0,        // allow flex shrink
-        background: "#e8eaed",
+        background: "var(--noir-bg)",
         overflow: "hidden",  // prevent map canvas from bleeding out
       }}
     >
@@ -230,46 +230,38 @@ export default function MapView({ places }: Props) {
           zIndex: 10,
           display: "flex",
           gap: "4px",
-          background: "rgba(255, 255, 255, 0.92)",
+          background: "rgba(23,20,15,0.85)",
           backdropFilter: "blur(8px)",
           padding: "4px",
           borderRadius: "99px",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-          border: "1px solid rgba(0,0,0,0.1)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+          border: "1px solid var(--noir-border-strong)",
         }}
       >
-        <button
-          onClick={() => setMapTheme("google")}
-          style={{
-            padding: "5px 12px",
-            borderRadius: "99px",
-            border: "none",
-            fontSize: "12px",
-            fontWeight: 600,
-            cursor: "pointer",
-            transition: "all 0.15s",
-            background: mapTheme === "google" ? "#1a73e8" : "transparent",
-            color: mapTheme === "google" ? "#ffffff" : "#5f6368",
-          }}
-        >
-          🗺️ Google Maps
-        </button>
-        <button
-          onClick={() => setMapTheme("dark")}
-          style={{
-            padding: "5px 12px",
-            borderRadius: "99px",
-            border: "none",
-            fontSize: "12px",
-            fontWeight: 600,
-            cursor: "pointer",
-            transition: "all 0.15s",
-            background: mapTheme === "dark" ? "#202124" : "transparent",
-            color: mapTheme === "dark" ? "#ffffff" : "#5f6368",
-          }}
-        >
-          🌙 Dark
-        </button>
+        {(
+          [
+            { id: "google", label: "🗺️ Google Maps" },
+            { id: "dark", label: "🌙 Dark" },
+          ] as { id: MapTheme; label: string }[]
+        ).map((opt) => (
+          <button
+            key={opt.id}
+            onClick={() => setMapTheme(opt.id)}
+            style={{
+              padding: "5px 12px",
+              borderRadius: "99px",
+              border: "none",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.15s",
+              background: mapTheme === opt.id ? "var(--gold)" : "transparent",
+              color: mapTheme === opt.id ? "#17140f" : "var(--noir-text-muted)",
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
 
       {/* Empty places badge banner */}
@@ -280,14 +272,14 @@ export default function MapView({ places }: Props) {
             top: "16px",
             left: "50%",
             transform: "translateX(-50%)",
-            background: "rgba(255,255,255,0.95)",
+            background: "rgba(23,20,15,0.9)",
             backdropFilter: "blur(12px)",
-            border: "1px solid rgba(0,0,0,0.1)",
+            border: "1px solid var(--noir-border-strong)",
             borderRadius: "99px",
             padding: "8px 18px",
             fontSize: "13px",
-            color: "#3c4043",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+            color: "var(--noir-text)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
             zIndex: 10,
             display: "flex",
             alignItems: "center",
@@ -311,13 +303,13 @@ export default function MapView({ places }: Props) {
             right: "16px",
             maxWidth: 420,
             margin: "0 auto",
-            background: "rgba(255, 255, 255, 0.98)",
+            background: "rgba(23,20,15,0.96)",
             backdropFilter: "blur(16px)",
-            border: "1px solid rgba(0,0,0,0.08)",
+            border: "1px solid var(--noir-border-strong)",
             borderRadius: "var(--radius-lg)",
             overflow: "hidden",
-            boxShadow: "0 10px 32px rgba(0,0,0,0.18)",
-            color: "#202124",
+            boxShadow: "0 10px 32px rgba(0,0,0,0.5)",
+            color: "var(--noir-text)",
             zIndex: 10,
           }}
         >
@@ -345,7 +337,7 @@ export default function MapView({ places }: Props) {
                     fontFamily: "var(--font-serif)",
                     fontSize: "16px",
                     fontWeight: 600,
-                    color: "#202124",
+                    color: "var(--noir-text)",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -358,7 +350,7 @@ export default function MapView({ places }: Props) {
                   style={{
                     background: "none",
                     border: "none",
-                    color: "#5f6368",
+                    color: "var(--noir-text-muted)",
                     fontSize: "18px",
                     cursor: "pointer",
                     lineHeight: 1,
@@ -372,7 +364,7 @@ export default function MapView({ places }: Props) {
               {selectedPlace.address && (
                 <p
                   style={{
-                    color: "#5f6368",
+                    color: "var(--noir-text-muted)",
                     fontSize: "12px",
                     marginTop: "2px",
                     whiteSpace: "nowrap",
@@ -393,34 +385,19 @@ export default function MapView({ places }: Props) {
                 }}
               >
                 <span
+                  className={`badge-${selectedPlace.category}`}
                   style={{
                     fontSize: "11px",
                     fontWeight: 600,
                     padding: "3px 8px",
                     borderRadius: "99px",
-                    background:
-                      selectedPlace.category === "stay"
-                        ? "#FCE4EC"
-                        : selectedPlace.category === "eat"
-                        ? "#FBE9E7"
-                        : selectedPlace.category === "do"
-                        ? "#E3F2FD"
-                        : "#E0F2F1",
-                    color:
-                      selectedPlace.category === "stay"
-                        ? "#C2185B"
-                        : selectedPlace.category === "eat"
-                        ? "#D84315"
-                        : selectedPlace.category === "do"
-                        ? "#1565C0"
-                        : "#00695C",
                   }}
                 >
                   {selectedPlace.category.toUpperCase()}
                 </span>
                 <div style={{ display: "flex", gap: "10px", fontSize: "12px" }}>
-                  <span style={{ color: "#f2994a", fontWeight: 600 }}>✦ {totalYaay}</span>
-                  <span style={{ color: "#80868b" }}>✕ {totalNaay}</span>
+                  <span style={{ color: "var(--gold)", fontWeight: 600 }}>✦ {totalYaay}</span>
+                  <span style={{ color: "var(--noir-text-muted)" }}>✕ {totalNaay}</span>
                 </div>
               </div>
             </div>

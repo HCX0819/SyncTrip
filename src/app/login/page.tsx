@@ -46,9 +46,8 @@ export default function LoginPage() {
 
   return (
     <main
-      className="theme-noir"
+      className="noir-canvas"
       style={{
-        minHeight: "100dvh",
         display: "flex",
         alignItems: "stretch",
       }}

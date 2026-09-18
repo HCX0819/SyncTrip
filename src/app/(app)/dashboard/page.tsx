@@ -46,7 +46,7 @@ function TripCard({ trip, role }: { trip: Trip; role: string }) {
             height: 160,
             background: trip.cover_url
               ? `url(${trip.cover_url}) center/cover`
-              : "linear-gradient(135deg, #e8f0fe 0%, #c5d9f8 100%)",
+              : "linear-gradient(135deg, #2a2418 0%, #17140f 100%)",
             position: "relative",
           }}
         >
@@ -63,8 +63,8 @@ function TripCard({ trip, role }: { trip: Trip; role: string }) {
                 position: "absolute",
                 top: 12,
                 right: 12,
-                background: "rgba(26,115,232,0.9)",
-                color: "#ffffff",
+                background: "rgba(212,175,55,0.92)",
+                color: "#17140f",
                 borderRadius: "99px",
                 padding: "3px 10px",
                 fontSize: "11px",
@@ -135,7 +135,7 @@ export default async function DashboardPage() {
           position: "sticky",
           top: 0,
           zIndex: 10,
-          boxShadow: "0 1px 3px rgba(60,64,67,0.08)",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
         }}
       >
         <p
