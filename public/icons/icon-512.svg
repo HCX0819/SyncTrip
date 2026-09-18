@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="128" fill="#0A0A0A" stroke="#2A2A2A" stroke-width="8"/>
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#C9A84C" stroke-width="4" stroke-dasharray="8 8"/>
+  <!-- Compass star / gold diamond -->
+  <path d="M256 140 L280 232 L372 256 L280 280 L256 372 L232 280 L140 256 L232 232 Z" fill="#C9A84C"/>
+  <circle cx="256" cy="256" r="12" fill="#0A0A0A"/>
+</svg>
