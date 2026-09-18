@@ -89,7 +89,7 @@ export default function ProfilePage() {
       </div>
 
       <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "12px" }}>
-        SyncTrip v1.0 • Built with luxury B&W design
+        SyncTrip v1.0 • Luxury Noir · Collaborative Travel
       </div>
     </div>
   );

@@ -42,7 +42,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`grain ${playfairDisplay.variable}`}>
+    <html lang="en" className={`grain theme-noir ${playfairDisplay.variable}`}>
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>

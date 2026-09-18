@@ -54,6 +54,23 @@
   --noir-text-muted: #a8a29e;
   --noir-text-light: #7a756e;
 
+  /* Luxury Noir — dark-tuned semantic / category colors */
+  --noir-red: #f28b82;
+  --noir-red-dim: rgba(234, 67, 53, 0.14);
+  --noir-red-border: rgba(234, 67, 53, 0.35);
+  --noir-green: #81c995;
+  --noir-green-dim: rgba(15, 157, 88, 0.14);
+  --noir-green-border: rgba(15, 157, 88, 0.35);
+  --noir-rose: #f48fb1;
+  --noir-rose-dim: rgba(233, 30, 99, 0.14);
+  --noir-rose-border: rgba(233, 30, 99, 0.35);
+  --noir-amber: #ffab91;
+  --noir-amber-dim: rgba(255, 112, 67, 0.14);
+  --noir-amber-border: rgba(255, 112, 67, 0.35);
+  --noir-sky: #8ab4f8;
+  --noir-sky-dim: rgba(66, 133, 244, 0.14);
+  --noir-sky-border: rgba(66, 133, 244, 0.35);
+
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -518,8 +535,26 @@ h1, h2, h3 {
   --accent-dim: var(--gold-dim);
   --accent-hover: var(--gold-dark);
 
-  background: radial-gradient(ellipse at 50% 20%, var(--noir-bg-soft) 0%, var(--noir-bg) 70%);
+  --red: var(--noir-red);
+  --red-light: var(--noir-red-dim);
+  --green: var(--noir-green);
+  --green-light: var(--noir-green-dim);
+
   color: var(--text);
+}
+
+/* Root canvas: flat near-black so overscroll never shows the light theme;
+   body goes transparent so long pages don't seam at the viewport edge. */
+html.theme-noir {
+  background: var(--noir-bg);
+  color-scheme: dark;
+}
+html.theme-noir body {
+  background: transparent;
+}
+
+.noir-canvas {
+  background: radial-gradient(ellipse at 50% 20%, var(--noir-bg-soft) 0%, var(--noir-bg) 70%);
   min-height: 100dvh;
 }
 
@@ -554,6 +589,49 @@ h1, h2, h3 {
 }
 .theme-noir .btn-ghost:not(:disabled):hover {
   background: var(--gold-dim);
+}
+
+.theme-noir .btn-danger {
+  border-color: var(--noir-red-border);
+}
+.theme-noir .btn-danger:not(:disabled):hover {
+  background: rgba(234, 67, 53, 0.22);
+}
+
+.theme-noir .badge-stay {
+  background: var(--noir-rose-dim);
+  color: var(--noir-rose);
+  border-color: var(--noir-rose-border);
+}
+.theme-noir .badge-eat {
+  background: var(--noir-amber-dim);
+  color: var(--noir-amber);
+  border-color: var(--noir-amber-border);
+}
+.theme-noir .badge-do {
+  background: var(--noir-sky-dim);
+  color: var(--noir-sky);
+  border-color: var(--noir-sky-border);
+}
+.theme-noir .badge-other {
+  background: var(--noir-green-dim);
+  color: var(--noir-green);
+  border-color: var(--noir-green-border);
+}
+
+.theme-noir .vote-btn.yaay.active {
+  box-shadow: 0 0 0 3px var(--gold-ring);
+}
+
+.theme-noir .fab-btn {
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.35), 0 8px 24px rgba(212, 175, 55, 0.18);
+}
+.theme-noir .fab-btn:hover {
+  box-shadow: 0 6px 16px rgba(212, 175, 55, 0.45), 0 12px 32px rgba(212, 175, 55, 0.22);
+}
+
+.theme-noir .modal-sheet {
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
 }
 
 @media (prefers-reduced-motion: reduce) {
