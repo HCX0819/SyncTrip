@@ -53,7 +53,7 @@ export default function BottomTabBar() {
         height: "var(--tab-height)",
         background: "var(--surface)",
         borderTop: "1px solid var(--border)",
-        boxShadow: "0 -1px 3px rgba(0,0,0,0.3), 0 -4px 12px rgba(0,0,0,0.25)",
+        boxShadow: "0 -4px 18px rgba(76, 51, 35, 0.1)",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-around",
