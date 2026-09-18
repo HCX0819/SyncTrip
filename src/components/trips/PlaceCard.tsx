@@ -75,8 +75,8 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
               top: "12px",
               left: "12px",
               zIndex: 5,
-              background: "rgba(212,175,55,0.92)",
-              color: "#17140f",
+              background: "rgba(255,253,249,0.92)",
+              color: "var(--blue-dark)",
               borderRadius: "99px",
               padding: "3px 10px",
               fontSize: "11px",
@@ -100,7 +100,7 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
             width: "30px",
             height: "30px",
             borderRadius: "50%",
-            background: "rgba(23,20,15,0.8)",
+            background: "rgba(255,253,249,0.88)",
             backdropFilter: "blur(8px)",
             border: "1px solid rgba(245,241,234,0.18)",
             color: "var(--noir-text)",
@@ -123,7 +123,7 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
             height: 180,
             background: place.photo_url
               ? `url(${place.photo_url}) center/cover`
-              : "linear-gradient(135deg, #2a2418 0%, #17140f 100%)",
+              : "linear-gradient(135deg, #e7c9a9 0%, #b85c38 100%)",
             position: "relative",
           }}
         >

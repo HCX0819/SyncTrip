@@ -59,7 +59,7 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
           position: "sticky",
           top: 0,
           zIndex: 20,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
+          boxShadow: "var(--shadow-sm)",
         }}
       >
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "12px" }}>

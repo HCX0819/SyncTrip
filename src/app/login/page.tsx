@@ -59,7 +59,7 @@ export default function LoginPage() {
           flex: 1,
           position: "relative",
           overflow: "hidden",
-          background: "linear-gradient(160deg, #17140f 0%, #0a0a0a 65%, #120f0a 100%)",
+          background: "linear-gradient(160deg, #f7eadb 0%, #e9c8a5 65%, #d99269 100%)",
           borderRight: "1px solid var(--noir-border)",
         }}
       >
@@ -71,7 +71,7 @@ export default function LoginPage() {
             left: 0,
             right: 0,
             height: "2px",
-            background: "linear-gradient(90deg, transparent, rgba(212,175,55,0.35), transparent)",
+            background: "linear-gradient(90deg, transparent, rgba(184,92,56,0.45), transparent)",
           }}
         />
         {/* Subtle radial glow */}
@@ -83,7 +83,7 @@ export default function LoginPage() {
             transform: "translate(-50%, -50%)",
             width: 480,
             height: 480,
-            background: "radial-gradient(ellipse, rgba(212,175,55,0.06) 0%, transparent 70%)",
+            background: "radial-gradient(ellipse, rgba(184,92,56,0.16) 0%, transparent 70%)",
             borderRadius: "50%",
           }}
         />
@@ -117,8 +117,8 @@ export default function LoginPage() {
               display: "inline-flex",
               alignItems: "center",
               gap: "8px",
-              background: "rgba(212,175,55,0.12)",
-              border: "1px solid rgba(212,175,55,0.3)",
+              background: "rgba(255,253,249,0.48)",
+              border: "1px solid rgba(184,92,56,0.28)",
               backdropFilter: "blur(8px)",
               borderRadius: "99px",
               padding: "6px 16px 6px 8px",
@@ -137,7 +137,7 @@ export default function LoginPage() {
                 justifyContent: "center",
               }}
             >
-              <Map size={16} color="#17140f" strokeWidth={2} />
+              <Map size={16} color="#fffdf9" strokeWidth={2} />
             </div>
             <span style={{ color: "var(--noir-text)", fontSize: "13px", fontWeight: 600, letterSpacing: "0.05em" }}>
               SYNCTRIP
@@ -175,8 +175,8 @@ export default function LoginPage() {
                   style={{
                     width: 28,
                     height: 28,
-                    background: "rgba(212,175,55,0.12)",
-                    border: "1px solid rgba(212,175,55,0.25)",
+                    background: "rgba(255,253,249,0.42)",
+                    border: "1px solid rgba(184,92,56,0.24)",
                     borderRadius: "50%",
                     display: "flex",
                     alignItems: "center",
@@ -303,7 +303,7 @@ export default function LoginPage() {
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = "var(--surface-2)";
-                e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.4)";
+                e.currentTarget.style.boxShadow = "var(--shadow-md)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = "var(--surface)";
