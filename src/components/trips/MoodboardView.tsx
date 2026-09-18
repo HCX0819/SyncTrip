@@ -134,7 +134,7 @@ export default function MoodboardView({
           height: "52px",
           borderRadius: "50%",
           background: "var(--accent)",
-          color: "#0a0a0a",
+          color: "#fffdf9",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

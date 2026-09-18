@@ -20,7 +20,7 @@ export default async function HomePage() {
         flexDirection: "column",
         justifyContent: "space-between",
         padding: "48px 24px",
-        background: "radial-gradient(ellipse at 50% 20%, #17140f 0%, #0a0a0a 70%)",
+        background: "radial-gradient(ellipse at 50% 0%, #fffdf9 0%, #f7efe4 72%)",
         position: "relative",
       }}
     >
@@ -82,7 +82,7 @@ export default async function HomePage() {
           letterSpacing: "0.05em",
         }}
       >
-        Luxury B&W Collaborative Travel PWA
+        Collaborative travel planning, made warmer.
       </footer>
     </main>
   );

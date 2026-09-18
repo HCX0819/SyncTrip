@@ -131,7 +131,7 @@ export default function ItineraryView({ trip, places, onUpdate }: Props) {
                 <span
                   style={{
                     background: activeDay === day ? "var(--accent)" : "var(--surface-2)",
-                    color: activeDay === day ? "#0a0a0a" : "var(--text-muted)",
+                    color: activeDay === day ? "#fffdf9" : "var(--text-muted)",
                     borderRadius: "50%",
                     width: "18px",
                     height: "18px",
