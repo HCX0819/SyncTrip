@@ -3,14 +3,20 @@
 import { useEffect, useState, useTransition } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Trip } from "@/lib/types";
+
+interface InvitePreview {
+  id: string;
+  name: string;
+  destination: string;
+  is_member: boolean;
+}
 
 export default function JoinTripPage() {
   const params = useParams();
-  const tripId = params.tripId as string;
+  const token = params.token as string;
   const router = useRouter();
 
-  const [trip, setTrip] = useState<Trip | null>(null);
+  const [trip, setTrip] = useState<InvitePreview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -26,62 +32,45 @@ export default function JoinTripPage() {
 
       if (!user) {
         // Redirect to login with return path
-        router.push(`/login?next=/join/${tripId}`);
+        router.push(`/login?next=/join/${token}`);
         return;
       }
 
-      // Fetch trip details
-      const { data: tripData, error: tripErr } = await supabase
-        .from("trips")
-        .select("*")
-        .eq("id", tripId)
-        .single();
+      // Trips aren't readable before joining, so preview via the invite token
+      const { data, error: previewErr } = await supabase.rpc("get_trip_invite_preview", {
+        p_token: token,
+      });
+      const preview = (data as InvitePreview[] | null)?.[0];
 
-      if (tripErr || !tripData) {
+      if (previewErr || !preview) {
         setError("This trip link is invalid or has expired.");
         setLoading(false);
         return;
       }
 
-      setTrip(tripData as Trip);
-
-      // Check if already a member
-      const { data: memberData } = await supabase
-        .from("trip_members")
-        .select("id")
-        .eq("trip_id", tripId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (memberData) {
+      if (preview.is_member) {
         // Already a member, go straight to trip
-        router.push(`/trips/${tripId}`);
+        router.push(`/trips/${preview.id}`);
         return;
       }
 
+      setTrip(preview);
       setLoading(false);
     }
 
-    if (tripId) {
+    if (token) {
       checkTripAndUser();
     }
-  }, [tripId, router]);
+  }, [token, router]);
 
   async function handleJoin() {
     startTransition(async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { error: joinErr } = await supabase.from("trip_members").insert({
-        trip_id: tripId,
-        user_id: user.id,
-        role: "member",
+      const { data: tripId, error: joinErr } = await supabase.rpc("join_trip", {
+        p_token: token,
       });
 
-      if (joinErr) {
-        setError(joinErr.message);
+      if (joinErr || !tripId) {
+        setError(joinErr?.message ?? "Could not join this trip.");
         return;
       }
 
