@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { Category, SavedPlace } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { isGeocodableQuery } from "@/lib/geocode";
+import { uploadTripPhoto } from "@/lib/uploadPhoto";
 
 interface Props {
   place: SavedPlace;
@@ -107,15 +108,14 @@ export default function EditPlaceModal({ place, onClose, onSaved }: Props) {
     if (!file) return;
     const preview = URL.createObjectURL(file);
     setPhotoPreview(preview);
+    setError(null);
 
-    const ext = file.name.split(".").pop();
-    const path = `places/${place.trip_id}/${Date.now()}.${ext}`;
-    const { data, error } = await supabase.storage
-      .from("photos")
-      .upload(path, file, { upsert: true });
-    if (!error && data) {
-      const { data: urlData } = supabase.storage.from("photos").getPublicUrl(path);
-      setForm((prev) => ({ ...prev, photo_url: urlData.publicUrl }));
+    try {
+      const photoUrl = await uploadTripPhoto(supabase, place.trip_id, file);
+      setForm((prev) => ({ ...prev, photo_url: photoUrl }));
+    } catch (err) {
+      setPhotoPreview(form.photo_url || null);
+      setError(err instanceof Error ? err.message : "Photo upload failed.");
     }
   }
 

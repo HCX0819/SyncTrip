@@ -11,6 +11,7 @@ export interface Trip {
   created_by: string;
   created_at: string;
   cover_url?: string | null;
+  invite_token?: string;
 }
 
 export interface TripMember {
@@ -26,7 +27,7 @@ export interface Profile {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
-  email: string | null;
+  email?: string | null;
 }
 
 export interface SavedPlace {

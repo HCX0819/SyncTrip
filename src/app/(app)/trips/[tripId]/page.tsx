@@ -10,7 +10,7 @@ async function getTripData(tripId: string, userId: string) {
     supabase.from("trips").select("*").eq("id", tripId).single(),
     supabase
       .from("trip_members")
-      .select("*, profile:profiles(*)")
+      .select("*, profile:profiles(id, display_name, avatar_url)")
       .eq("trip_id", tripId),
     supabase
       .from("saved_places")

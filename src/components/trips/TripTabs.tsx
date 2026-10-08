@@ -24,7 +24,7 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
   const router = useRouter();
   const supabase = createClient();
 
-  const inviteUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/join/${trip.id}`;
+  const inviteUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/join/${trip.invite_token}`;
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: "moodboard", label: "Moodboard", icon: "⊞" },

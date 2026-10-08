@@ -41,6 +41,35 @@ interface Bias {
 const BIAS_TTL_MS = 10 * 60 * 1000;
 const biasCache = new Map<string, { bias: Bias | null; expires: number }>();
 
+// Per-instance only (serverless instances don't share memory), but enough to
+// stop a single client from burning through the Mapbox quota.
+const RATE_LIMIT = 30;
+const RATE_WINDOW_MS = 60 * 1000;
+const rateWindows = new Map<string, { count: number; resets: number }>();
+
+const RESULT_TTL_MS = 24 * 60 * 60 * 1000;
+const RESULT_CACHE_MAX = 500;
+const resultCache = new Map<string, { results: GeocodeFeature[]; expires: number }>();
+
+function isRateLimited(userId: string) {
+  const now = Date.now();
+  const w = rateWindows.get(userId);
+  if (!w || w.resets <= now) {
+    rateWindows.set(userId, { count: 1, resets: now + RATE_WINDOW_MS });
+    return false;
+  }
+  w.count += 1;
+  return w.count > RATE_LIMIT;
+}
+
+function cacheResults(key: string, results: GeocodeFeature[]) {
+  if (resultCache.size >= RESULT_CACHE_MAX) {
+    // Maps iterate in insertion order, so this evicts the oldest entry.
+    resultCache.delete(resultCache.keys().next().value!);
+  }
+  resultCache.set(key, { results, expires: Date.now() + RESULT_TTL_MS });
+}
+
 function getToken() {
   const token = process.env.MAPBOX_TOKEN ?? process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   return token?.startsWith("pk.") && !token.includes("placeholder") ? token : null;
@@ -135,6 +164,13 @@ export async function GET(request: NextRequest) {
   const tripId = request.nextUrl.searchParams.get("tripId")?.trim() ?? "";
   if (!isGeocodableQuery(q)) return Response.json([]);
 
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return Response.json([], { status: 401 });
+  if (isRateLimited(user.id)) return Response.json([], { status: 429 });
+
   const token = getToken();
   const search = token
     ? (bias: Bias | null) => searchMapbox(q, token, bias)
@@ -142,9 +178,15 @@ export async function GET(request: NextRequest) {
 
   try {
     const bias = tripId && token ? await resolveBias(tripId, token) : null;
+    // Proximity changes ranking, so two trips in the same country can't share results.
+    const cacheKey = `${bias ? `${bias.country},${bias.lon},${bias.lat}` : ""}|${q.toLowerCase()}`;
+    const cached = resultCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) return Response.json(cached.results);
+
     let results = await search(bias);
     // A vague destination can resolve to the wrong country; don't let it hide everything.
     if (results.length === 0 && bias) results = await search(null);
+    if (results.length > 0) cacheResults(cacheKey, results);
     return Response.json(results);
   } catch {
     return Response.json([], { status: 502 });

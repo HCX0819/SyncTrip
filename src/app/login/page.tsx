@@ -20,13 +20,22 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const supabase = createClient();
 
+  // Carry ?next= (e.g. an invite link) through the auth round-trip; the
+  // callback route validates it.
+  function callbackUrl() {
+    const next = new URLSearchParams(location.search).get("next");
+    const url = new URL("/auth/callback", location.origin);
+    if (next) url.searchParams.set("next", next);
+    return url.toString();
+  }
+
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${location.origin}/auth/callback` },
+      options: { emailRedirectTo: callbackUrl() },
     });
     setLoading(false);
     if (error) {
@@ -40,7 +49,7 @@ export default function LoginPage() {
     setLoading(true);
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback` },
+      options: { redirectTo: callbackUrl() },
     });
   }
 
