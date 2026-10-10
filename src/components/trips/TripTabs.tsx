@@ -6,6 +6,7 @@ import type { Trip, TripMember, SavedPlace } from "@/lib/types";
 import MoodboardView from "./MoodboardView";
 import MapView from "./MapView";
 import ItineraryView from "./ItineraryView";
+import TripSettingsSheet from "./TripSettingsSheet";
 import { createClient } from "@/lib/supabase/client";
 
 type Tab = "moodboard" | "map" | "itinerary";
@@ -21,10 +22,29 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
   const [activeTab, setActiveTab] = useState<Tab>("moodboard");
   const [places, setPlaces] = useState(initialPlaces);
   const [showInvite, setShowInvite] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  // Local copy so a reset link shows immediately, before the page refreshes.
+  const [inviteToken, setInviteToken] = useState(trip.invite_token);
+  const [resettingInvite, setResettingInvite] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
-  const inviteUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/join/${trip.invite_token}`;
+  const currentUserRole = members.find((m) => m.user_id === currentUserId)?.role ?? "member";
+  const inviteUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/join/${inviteToken}`;
+
+  async function resetInviteLink() {
+    if (!confirm("Reset the invite link? The current link will stop working.")) return;
+    setResettingInvite(true);
+    setInviteError(null);
+    const { data, error } = await supabase.rpc("rotate_invite_token", { p_trip_id: trip.id });
+    setResettingInvite(false);
+    if (error || typeof data !== "string") {
+      setInviteError(error?.message ?? "Couldn't reset the link.");
+      return;
+    }
+    setInviteToken(data);
+  }
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: "moodboard", label: "Moodboard", icon: "⊞" },
@@ -102,15 +122,25 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
             </div>
           </div>
 
-          {/* Invite button */}
-          <button
-            id="invite-btn"
-            className="btn btn-ghost btn-sm"
-            onClick={() => setShowInvite(true)}
-            style={{ flexShrink: 0, marginLeft: "12px" }}
-          >
-            + Invite
-          </button>
+          {/* Invite + settings buttons */}
+          <div style={{ display: "flex", gap: "8px", flexShrink: 0, marginLeft: "12px" }}>
+            <button
+              id="invite-btn"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setShowInvite(true)}
+            >
+              + Invite
+            </button>
+            <button
+              id="trip-settings-btn"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setShowSettings(true)}
+              aria-label="Trip settings"
+              title="Trip settings"
+            >
+              ⋯
+            </button>
+          </div>
         </div>
 
         {/* Member avatars */}
@@ -278,8 +308,35 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
                 Copy
               </button>
             </div>
+            {currentUserRole === "owner" && (
+              <div style={{ marginTop: "16px" }}>
+                <button
+                  id="reset-invite-btn"
+                  className="btn btn-ghost btn-sm"
+                  onClick={resetInviteLink}
+                  disabled={resettingInvite}
+                >
+                  {resettingInvite ? "Resetting…" : "Reset link"}
+                </button>
+                <p style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "8px" }}>
+                  Resetting makes the old link stop working. Existing members stay in the trip.
+                </p>
+                {inviteError && (
+                  <p style={{ color: "var(--red)", fontSize: "13px", marginTop: "8px" }}>{inviteError}</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
+      )}
+
+      {showSettings && (
+        <TripSettingsSheet
+          trip={trip}
+          members={members}
+          currentUserId={currentUserId}
+          onClose={() => setShowSettings(false)}
+        />
       )}
     </div>
   );
