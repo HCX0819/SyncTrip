@@ -252,6 +252,13 @@ export default async function DashboardPage() {
         >
           Your Trips
         </h1>
+        <Link
+          id="templates-link"
+          href="/templates"
+          style={{ display: "inline-block", marginTop: "6px", fontSize: "13px", color: "var(--blue)" }}
+        >
+          Start from a template →
+        </Link>
       </header>
 
       {/* Content */}

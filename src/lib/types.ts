@@ -12,6 +12,31 @@ export interface Trip {
   created_at: string;
   cover_url?: string | null;
   invite_token?: string;
+  is_public_template?: boolean;
+}
+
+/** Row from the list_templates() RPC: display fields only. */
+export interface TemplateSummary {
+  id: string;
+  name: string;
+  destination: string;
+  day_count: number | null;
+  place_count: number;
+  cover_url: string | null;
+}
+
+/** get_template() result: a summary plus its places (one per itinerary slot). */
+export interface TemplateDetail extends TemplateSummary {
+  places: {
+    title: string;
+    category: Category;
+    address: string | null;
+    photo_url: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    day_index: number | null;
+    sort_order: number | null;
+  }[];
 }
 
 export interface TripMember {
