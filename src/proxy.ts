@@ -32,7 +32,7 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes — allow unauthenticated
-  const publicRoutes = ["/login", "/auth/callback", "/join", "/privacy", "/terms"];
+  const publicRoutes = ["/login", "/auth/callback", "/join", "/privacy", "/terms", "/~offline"];
   const isPublic =
     publicRoutes.some((r) => pathname.startsWith(r)) ||
     pathname.startsWith("/_next") ||
@@ -59,6 +59,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|sw.js|workbox-.*|swe-worker-.*|fallback-.*|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

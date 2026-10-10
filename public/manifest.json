@@ -1,11 +1,13 @@
 {
+  "id": "/dashboard",
   "name": "SyncTrip — Group Travel Planner",
   "short_name": "SyncTrip",
   "description": "Collaborative group trip planner with visual moodboards, voting, and day-by-day itineraries.",
   "start_url": "/dashboard",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
+  "background_color": "#fffaf3",
+  "theme_color": "#fffaf3",
   "icons": [
     {
       "src": "/icons/icon-192.png",
