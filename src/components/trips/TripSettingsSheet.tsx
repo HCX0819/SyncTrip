@@ -3,9 +3,10 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import type { Trip, TripMember } from "@/lib/types";
+import type { Expense, Trip, TripMember } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { uploadTripPhoto } from "@/lib/uploadPhoto";
+import { COMMON_CURRENCIES, computeBalances, formatMoney } from "@/lib/settle";
 
 interface Props {
   trip: Trip;
@@ -49,6 +50,7 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
     start_date: trip.start_date || "",
     end_date: trip.end_date || "",
     cover_url: trip.cover_url || "",
+    currency: trip.currency || "USD",
   });
   // Which action is in flight, so only that button shows a spinner label.
   const [busy, setBusy] = useState<"save" | "upload" | "remove" | "leave" | "delete" | null>(null);
@@ -63,7 +65,7 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
     .filter((m) => m.user_id !== currentUserId)
     .sort((a, b) => a.joined_at.localeCompare(b.joined_at) || a.id.localeCompare(b.id))[0];
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     setDetailsSaved(false);
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
@@ -104,6 +106,7 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
         start_date: form.start_date || null,
         end_date: form.end_date || null,
         cover_url: form.cover_url || null,
+        currency: form.currency,
       })
       .eq("id", trip.id)
       .select("id");
@@ -119,10 +122,32 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
     router.refresh();
   }
 
+  // Net expense balance for one member (positive = the group owes them).
+  async function memberBalance(userId: string) {
+    const { data } = await supabase
+      .from("expenses")
+      .select("id, paid_by, amount_cents, expense_shares(expense_id, user_id, amount_cents)")
+      .eq("trip_id", trip.id);
+    const expenses = (data ?? []) as Expense[];
+    return computeBalances(expenses, expenses.flatMap((e) => e.expense_shares ?? []))[userId] ?? 0;
+  }
+
   async function handleRemove(member: TripMember) {
-    if (!confirm(`Remove ${memberName(member)} from ${trip.name}?`)) return;
     setBusy("remove");
     setMembersError(null);
+    const balance = await memberBalance(member.user_id);
+    setBusy(null);
+    let message = `Remove ${memberName(member)} from ${trip.name}?`;
+    if (balance !== 0) {
+      const amount = formatMoney(Math.abs(balance), trip.currency || "USD");
+      message =
+        (balance > 0
+          ? `${memberName(member)} is still owed ${amount}.`
+          : `${memberName(member)} still owes ${amount}.`) +
+        ` Their expenses stay on the trip, but they won't be able to settle up here. Remove them anyway?`;
+    }
+    if (!confirm(message)) return;
+    setBusy("remove");
     const { error } = await supabase.rpc("remove_member", {
       p_trip_id: trip.id,
       p_user_id: member.user_id,
@@ -247,6 +272,31 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
                     onChange={handleChange}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label htmlFor="settings-currency" style={labelStyle}>
+                  CURRENCY
+                </label>
+                <select
+                  id="settings-currency"
+                  className="input"
+                  name="currency"
+                  value={form.currency}
+                  onChange={handleChange}
+                >
+                  {(COMMON_CURRENCIES.includes(form.currency)
+                    ? COMMON_CURRENCIES
+                    : [form.currency, ...COMMON_CURRENCIES]
+                  ).map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <p style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "6px" }}>
+                  Used for all of this trip&rsquo;s expenses. Changing it doesn&rsquo;t convert existing amounts.
+                </p>
               </div>
 
               {/* Cover photo */}

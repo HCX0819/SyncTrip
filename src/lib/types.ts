@@ -12,6 +12,7 @@ export interface Trip {
   created_at: string;
   cover_url?: string | null;
   invite_token?: string;
+  currency?: string;
 }
 
 export interface TripMember {
@@ -72,7 +73,11 @@ export type ActivityKind =
   | "itinerary_reordered"
   | "member_joined"
   | "member_left"
-  | "member_removed";
+  | "member_removed"
+  | "expense_added"
+  | "expense_updated"
+  | "expense_deleted"
+  | "settlement_recorded";
 
 export interface TripActivity {
   id: string;
@@ -85,7 +90,34 @@ export interface TripActivity {
     name?: string | null;
     value?: VoteValue;
     day_index?: number;
+    description?: string | null;
+    amount_cents?: number;
+    currency?: string | null;
+    from_name?: string | null;
+    to_name?: string | null;
+    is_settlement?: boolean;
     [key: string]: unknown;
   };
   created_at: string;
+}
+
+export interface ExpenseShare {
+  expense_id: string;
+  user_id: string;
+  amount_cents: number;
+}
+
+export interface Expense {
+  id: string;
+  trip_id: string;
+  description: string;
+  amount_cents: number;
+  paid_by: string | null;
+  spent_on: string;
+  category: string | null;
+  place_id: string | null;
+  is_settlement: boolean;
+  created_by: string | null;
+  created_at: string;
+  expense_shares?: ExpenseShare[];
 }

@@ -6,6 +6,7 @@ import type { Trip, TripMember, SavedPlace } from "@/lib/types";
 import MoodboardView from "./MoodboardView";
 import MapView from "./MapView";
 import ItineraryView from "./ItineraryView";
+import ExpensesView from "./ExpensesView";
 import TripSettingsSheet from "./TripSettingsSheet";
 import ActivityFeedSheet from "./ActivityFeedSheet";
 import { useOnlineStatus } from "@/components/layout/OfflineBanner";
@@ -13,7 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatTripDate } from "@/lib/dates";
 import { useTripSync } from "@/lib/useTripSync";
 
-type Tab = "moodboard" | "map" | "itinerary";
+type Tab = "moodboard" | "map" | "itinerary" | "expenses";
 
 interface Props {
   trip: Trip;
@@ -56,6 +57,7 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
     { id: "moodboard", label: "Moodboard", icon: "⊞" },
     { id: "map", label: "Map", icon: "◎" },
     { id: "itinerary", label: "Itinerary", icon: "☰" },
+    { id: "expenses", label: "Expenses", icon: "¤" },
   ];
 
   async function refreshPlaces() {
@@ -324,6 +326,15 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
         )}
         {activeTab === "itinerary" && (
           <ItineraryView trip={trip} places={places} onUpdate={refreshPlaces} syncTick={syncTick} />
+        )}
+        {activeTab === "expenses" && (
+          <ExpensesView
+            trip={trip}
+            members={members}
+            places={places}
+            currentUserId={currentUserId}
+            syncTick={syncTick}
+          />
         )}
       </div>
 
