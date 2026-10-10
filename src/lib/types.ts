@@ -62,3 +62,30 @@ export interface ItineraryItem {
   sort_order: number;
   place?: SavedPlace;
 }
+
+export type ActivityKind =
+  | "place_added"
+  | "place_deleted"
+  | "vote"
+  | "itinerary_added"
+  | "itinerary_removed"
+  | "itinerary_reordered"
+  | "member_joined"
+  | "member_left"
+  | "member_removed";
+
+export interface TripActivity {
+  id: string;
+  trip_id: string;
+  actor_id: string | null;
+  kind: ActivityKind;
+  payload: {
+    actor_name?: string | null;
+    title?: string | null;
+    name?: string | null;
+    value?: VoteValue;
+    day_index?: number;
+    [key: string]: unknown;
+  };
+  created_at: string;
+}
