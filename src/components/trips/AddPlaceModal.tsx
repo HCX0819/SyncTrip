@@ -7,12 +7,18 @@ import { createClient } from "@/lib/supabase/client";
 import { isGeocodableQuery } from "@/lib/geocode";
 import { uploadTripPhoto } from "@/lib/uploadPhoto";
 import BookingFields, { bookingColumns, type BookingValue } from "./BookingFields";
+import { extractUrl } from "@/lib/extractUrl";
+import type { UnfurlResult } from "@/app/api/unfurl/route";
 
 interface Props {
   tripId: string;
   onClose: () => void;
   onSaved: () => void;
+  // A link shared into the app (PWA share target); unfurled on open.
+  initialUrl?: string | null;
 }
+
+type UnfurlResponse = { data: UnfurlResult } | { error: string };
 
 const CATEGORIES: { value: Category; label: string }[] = [
   { value: "stay", label: "🏨 Stay" },
@@ -21,7 +27,7 @@ const CATEGORIES: { value: Category; label: string }[] = [
   { value: "other", label: "⋯ Other" },
 ];
 
-export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
+export default function AddPlaceModal({ tripId, onClose, onSaved, initialUrl }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -29,10 +35,17 @@ export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
   const [addressSuggestions, setAddressSuggestions] = useState<MapboxFeature[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [linkInput, setLinkInput] = useState(initialUrl ?? "");
+  const [unfurling, setUnfurling] = useState(!!initialUrl);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const lastUnfurled = useRef<string | null>(null);
+  // Only the latest request may fill the form if links are pasted in quick succession.
+  const unfurlSeq = useRef(0);
+
   const [form, setForm] = useState({
     title: "",
     category: "do" as Category,
-    source_url: "",
+    source_url: initialUrl ?? "",
     note: "",
     address: "",
     latitude: null as number | null,
@@ -117,6 +130,74 @@ export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
     }
   }
 
+  async function fetchUnfurl(url: string): Promise<UnfurlResponse> {
+    try {
+      const res = await fetch(`/api/unfurl?url=${encodeURIComponent(url)}&tripId=${tripId}`);
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body) return { error: body?.error ?? "Couldn't read that link." };
+      return { data: body as UnfurlResult };
+    } catch {
+      return { error: "Couldn't fetch that link — check your connection." };
+    }
+  }
+
+  // Fills whatever the link gave us; the user reviews everything before saving.
+  function applyUnfurl(result: UnfurlResponse) {
+    setUnfurling(false);
+    if ("error" in result) {
+      lastUnfurled.current = null; // let "Fill" retry the same link
+      setLinkError(`${result.error} You can still fill in the details yourself.`);
+      return;
+    }
+    const d = result.data;
+    setLinkError(null);
+    setAddressSuggestions([]);
+    setForm((prev) => ({
+      ...prev,
+      title: d.title ?? prev.title,
+      category: d.categoryGuess,
+      note: d.note ?? prev.note,
+      photo_url: d.photoUrl ?? prev.photo_url,
+      address: d.address ?? (d.lat !== null ? "" : prev.address),
+      latitude: d.lat ?? prev.latitude,
+      longitude: d.lng ?? prev.longitude,
+    }));
+    if (d.photoUrl) setPhotoPreview(d.photoUrl);
+  }
+
+  function runUnfurl(text: string) {
+    const url = extractUrl(text);
+    if (!url) {
+      if (text.trim()) setLinkError("Paste a full link starting with https://");
+      return;
+    }
+    if (url === lastUnfurled.current) return;
+    lastUnfurled.current = url;
+    const seq = ++unfurlSeq.current;
+    setLinkInput(url);
+    setForm((prev) => ({ ...prev, source_url: url }));
+    setLinkError(null);
+    setUnfurling(true);
+    fetchUnfurl(url).then((result) => {
+      if (seq === unfurlSeq.current) applyUnfurl(result);
+    });
+  }
+
+  // A shared link arrives already filled in; unfurl it once on open.
+  useEffect(() => {
+    if (!initialUrl) return;
+    let cancelled = false;
+    lastUnfurled.current = initialUrl;
+    const seq = ++unfurlSeq.current;
+    fetchUnfurl(initialUrl).then((result) => {
+      if (!cancelled && seq === unfurlSeq.current) applyUnfurl(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialUrl]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -170,6 +251,56 @@ export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
           onSubmit={handleSubmit}
           style={{ display: "flex", flexDirection: "column", gap: "18px" }}
         >
+          {/* Paste a link */}
+          <div>
+            <label
+              htmlFor="place-link"
+              style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginBottom: "6px", letterSpacing: "0.08em" }}
+            >
+              PASTE A LINK {unfurling && <span style={{ color: "var(--accent)" }}>reading link…</span>}
+            </label>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <input
+                id="place-link"
+                className="input"
+                type="url"
+                inputMode="url"
+                placeholder="Google Maps, TikTok, YouTube, blog…"
+                value={linkInput}
+                onChange={(e) => setLinkInput(e.target.value)}
+                onPaste={(e) => {
+                  // Shared text may wrap the link; keep just the URL in the field.
+                  const text = e.clipboardData.getData("text");
+                  if (extractUrl(text)) {
+                    e.preventDefault();
+                    runUnfurl(text);
+                  }
+                }}
+                onBlur={() => runUnfurl(linkInput)}
+                onKeyDown={(e) => {
+                  // Enter would submit the whole form.
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    runUnfurl(linkInput);
+                  }
+                }}
+                autoComplete="off"
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                disabled={unfurling || !linkInput.trim()}
+                onClick={() => runUnfurl(linkInput)}
+              >
+                {unfurling ? "…" : "Fill"}
+              </button>
+            </div>
+            {linkError && (
+              <p style={{ color: "var(--red)", fontSize: "12px", marginTop: "6px" }}>{linkError}</p>
+            )}
+          </div>
+
           {/* Title */}
           <div>
             <label
