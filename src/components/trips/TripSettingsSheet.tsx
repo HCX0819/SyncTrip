@@ -51,12 +51,18 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
     cover_url: trip.cover_url || "",
   });
   // Which action is in flight, so only that button shows a spinner label.
-  const [busy, setBusy] = useState<"save" | "upload" | "remove" | "leave" | "delete" | null>(null);
+  const [busy, setBusy] = useState<
+    "save" | "upload" | "remove" | "leave" | "delete" | "duplicate" | "template" | null
+  >(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsSaved, setDetailsSaved] = useState(false);
   const [membersError, setMembersError] = useState<string | null>(null);
   const [dangerError, setDangerError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [isPublicTemplate, setIsPublicTemplate] = useState(!!trip.is_public_template);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicateForm, setDuplicateForm] = useState({ name: `${trip.name} (copy)`, start_date: "" });
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   // Ownership passes to whoever joined first among the remaining members.
   const successor = [...members]
@@ -132,6 +138,42 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
       setMembersError(error.message);
       return;
     }
+    router.refresh();
+  }
+
+  async function handleDuplicate(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy("duplicate");
+    setCopyError(null);
+    const { data, error } = await supabase.rpc("duplicate_trip", {
+      p_trip_id: trip.id,
+      p_name: duplicateForm.name.trim(),
+      p_start_date: duplicateForm.start_date || null,
+    });
+    if (error || !data) {
+      setBusy(null);
+      setCopyError(error?.message ?? "Couldn't duplicate this trip.");
+      return;
+    }
+    router.push(`/trips/${data}`);
+    onClose();
+  }
+
+  async function handleTemplateToggle(e: React.ChangeEvent<HTMLInputElement>) {
+    const next = e.target.checked;
+    setBusy("template");
+    setCopyError(null);
+    const { data, error } = await supabase
+      .from("trips")
+      .update({ is_public_template: next })
+      .eq("id", trip.id)
+      .select("id");
+    setBusy(null);
+    if (error || !data?.length) {
+      setCopyError(error?.message ?? "Only the trip owner can share this trip as a template.");
+      return;
+    }
+    setIsPublicTemplate(next);
     router.refresh();
   }
 
@@ -397,6 +439,96 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
             ))}
           </div>
           {membersError && <p style={errorStyle}>{membersError}</p>}
+        </div>
+
+        {/* Copy / template */}
+        <div style={{ marginBottom: "32px" }}>
+          <p style={sectionTitleStyle}>COPY</p>
+          {isOwner && (
+            <label
+              htmlFor="public-template-toggle"
+              style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginBottom: "16px", cursor: "pointer" }}
+            >
+              <input
+                id="public-template-toggle"
+                type="checkbox"
+                checked={isPublicTemplate}
+                onChange={handleTemplateToggle}
+                disabled={busy !== null}
+                style={{ marginTop: "3px", accentColor: "var(--blue)" }}
+              />
+              <span>
+                <span style={{ display: "block", fontSize: "14px", color: "var(--text)" }}>
+                  Share as public template
+                </span>
+                <span style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
+                  Anyone on SyncTrip can see the name, destination, places and days, and copy them. Notes and
+                  members stay private.
+                </span>
+              </span>
+            </label>
+          )}
+
+          {duplicateOpen ? (
+            <form onSubmit={handleDuplicate} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label htmlFor="duplicate-trip-name" style={labelStyle}>
+                  NEW TRIP NAME *
+                </label>
+                <input
+                  id="duplicate-trip-name"
+                  className="input"
+                  value={duplicateForm.name}
+                  onChange={(e) => setDuplicateForm((prev) => ({ ...prev, name: e.target.value }))}
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="duplicate-start-date" style={labelStyle}>
+                  START DATE
+                </label>
+                <input
+                  id="duplicate-start-date"
+                  className="input"
+                  type="date"
+                  value={duplicateForm.start_date}
+                  onChange={(e) => setDuplicateForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                />
+              </div>
+              <p style={{ color: "var(--text-muted)", fontSize: "12px" }}>
+                Copies places and the itinerary (not votes) into a new trip that you own.
+              </p>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setDuplicateOpen(false)}
+                  disabled={busy !== null}
+                >
+                  Cancel
+                </button>
+                <button
+                  id="duplicate-trip-submit"
+                  type="submit"
+                  className="btn btn-primary btn-sm"
+                  disabled={busy !== null || !duplicateForm.name.trim()}
+                >
+                  {busy === "duplicate" ? "Duplicating…" : "Duplicate"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              id="duplicate-trip-btn"
+              type="button"
+              className="btn btn-ghost btn-full"
+              onClick={() => setDuplicateOpen(true)}
+              disabled={busy !== null}
+            >
+              Duplicate trip
+            </button>
+          )}
+          {copyError && <p style={errorStyle}>{copyError}</p>}
         </div>
 
         {/* Leave / delete */}
