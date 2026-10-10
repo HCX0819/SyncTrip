@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TripActivity } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
+import { formatMoney } from "@/lib/settle";
 
 const PAGE_SIZE = 50;
 // Consecutive votes, reorders or checklist additions by the same person within this window show as one row.
@@ -18,6 +19,12 @@ interface Props {
 interface Row {
   activity: TripActivity;
   count: number;
+}
+
+// Uses the currency stored with the event, so a later currency change
+// doesn't rewrite history.
+function amount(a: TripActivity): string {
+  return formatMoney(a.payload.amount_cents ?? 0, a.payload.currency ?? "USD");
 }
 
 function describe(a: TripActivity, count: number): string {
@@ -52,6 +59,16 @@ function describe(a: TripActivity, count: number): string {
       return typeof p.body === "string" && p.body
         ? `commented on ${title}: “${p.body}${p.body.length >= 80 ? "…" : ""}”`
         : `commented on ${title}`;
+    case "expense_added":
+      return `added an expense: ${p.description ?? "expense"} (${amount(a)})`;
+    case "expense_updated":
+      return `edited the expense ${p.description ?? ""} (${amount(a)})`;
+    case "expense_deleted":
+      return p.is_settlement
+        ? `deleted a ${amount(a)} payment`
+        : `deleted the expense ${p.description ?? ""} (${amount(a)})`;
+    case "settlement_recorded":
+      return `recorded a ${amount(a)} payment from ${p.from_name ?? "someone"} to ${p.to_name ?? "someone"}`;
     default:
       return "made a change";
   }

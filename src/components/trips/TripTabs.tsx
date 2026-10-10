@@ -7,6 +7,7 @@ import MoodboardView from "./MoodboardView";
 import MapView from "./MapView";
 import ItineraryView from "./ItineraryView";
 import ListsView from "./ListsView";
+import ExpensesView from "./ExpensesView";
 import TripSettingsSheet from "./TripSettingsSheet";
 import ActivityFeedSheet from "./ActivityFeedSheet";
 import { useOnlineStatus } from "@/components/layout/OfflineBanner";
@@ -15,7 +16,7 @@ import { formatTripDate } from "@/lib/dates";
 import { useTripSync } from "@/lib/useTripSync";
 import { formatSavedAt, loadTripSnapshot, saveTripSnapshot } from "@/lib/tripSnapshot";
 
-type Tab = "moodboard" | "map" | "itinerary" | "lists";
+type Tab = "moodboard" | "map" | "itinerary" | "expenses" | "lists";
 
 interface Props {
   trip: Trip;
@@ -62,6 +63,7 @@ export default function TripTabs({ trip: serverTrip, members: serverMembers, pla
     { id: "moodboard", label: "Moodboard", icon: "⊞" },
     { id: "map", label: "Map", icon: "◎" },
     { id: "itinerary", label: "Itinerary", icon: "☰" },
+    { id: "expenses", label: "Expenses", icon: "¤" },
     { id: "lists", label: "Lists", icon: "☑" },
   ];
 
@@ -382,6 +384,15 @@ export default function TripTabs({ trip: serverTrip, members: serverMembers, pla
         )}
         {activeTab === "lists" && (
           <ListsView tripId={trip.id} members={members} currentUserId={currentUserId} syncTick={syncTick} />
+        )}
+        {activeTab === "expenses" && (
+          <ExpensesView
+            trip={trip}
+            members={members}
+            places={places}
+            currentUserId={currentUserId}
+            syncTick={syncTick}
+          />
         )}
       </div>
 
