@@ -496,7 +496,7 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
                 />
               </div>
               <p style={{ color: "var(--text-muted)", fontSize: "12px" }}>
-                Copies places and the itinerary (not votes) into a new trip that you own.
+                Copies places, the itinerary and checklists (not votes or comments) into a new trip that you own.
               </p>
               <div style={{ display: "flex", gap: "8px" }}>
                 <button
@@ -529,6 +529,35 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
             </button>
           )}
           {copyError && <p style={errorStyle}>{copyError}</p>}
+        </div>
+
+        {/* Print / export */}
+        <div style={{ marginBottom: "32px" }}>
+          <p style={sectionTitleStyle}>PRINT / EXPORT</p>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <a id="print-trip-link" href={`/trips/${trip.id}/print`} className="btn btn-ghost btn-sm">
+              🖨 Print itinerary
+            </a>
+            {trip.start_date ? (
+              <a
+                id="download-ics-link"
+                href={`/api/trips/${trip.id}/calendar`}
+                download
+                className="btn btn-ghost btn-sm"
+              >
+                📅 Download .ics
+              </a>
+            ) : (
+              <button type="button" className="btn btn-ghost btn-sm" disabled>
+                📅 Download .ics
+              </button>
+            )}
+          </div>
+          <p style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "8px" }}>
+            {trip.start_date
+              ? "Import the .ics file into Google, Apple or Outlook calendar."
+              : "Set trip dates to export the itinerary to a calendar."}
+          </p>
         </div>
 
         {/* Leave / delete */}

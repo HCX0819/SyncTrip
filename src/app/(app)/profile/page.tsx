@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { clearTripSnapshots } from "@/lib/tripSnapshot";
 
 export default function ProfilePage() {
   const [email, setEmail] = useState<string | null>(null);
@@ -63,6 +64,7 @@ export default function ProfilePage() {
   }
 
   async function handleSignOut() {
+    clearTripSnapshots();
     await supabase.auth.signOut();
     router.push("/login");
   }
@@ -77,6 +79,7 @@ export default function ProfilePage() {
       setDeleteError(error.message);
       return;
     }
+    clearTripSnapshots();
     await supabase.auth.signOut();
     router.push("/login");
   }

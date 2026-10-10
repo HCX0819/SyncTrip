@@ -27,6 +27,9 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Trip, SavedPlace, ItineraryItem } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { tripDayCount, tripDayDate } from "@/lib/dates";
+import { useOnlineStatus } from "@/components/layout/OfflineBanner";
+import { formatSavedAt, loadTripSnapshot, saveTripSnapshot } from "@/lib/tripSnapshot";
+import { googleCalendarUrl, type CalendarItem } from "@/lib/ics";
 
 interface Props {
   trip: Trip;
@@ -68,6 +71,10 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Offline: items come from the saved snapshot (savedAt) and editing is off.
+  const online = useOnlineStatus();
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const readOnly = !online;
 
   const [supabase] = useState(() => createClient());
 
@@ -95,6 +102,25 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
     return (data as ItineraryItem[] | null) ?? null;
   }, [supabase, trip.id]);
 
+  // Applies a load result: fresh items are saved for offline use; a failed
+  // load while offline falls back to the snapshot.
+  const applyLoaded = useCallback(
+    (data: ItineraryItem[] | null) => {
+      if (data) {
+        setItems(data);
+        setSavedAt(null);
+        saveTripSnapshot(trip.id, { items: data });
+        return;
+      }
+      if (navigator.onLine) return;
+      const saved = loadTripSnapshot(trip.id);
+      if (!saved?.items) return;
+      setItems(saved.items);
+      setSavedAt(saved.updated.items ?? saved.savedAt);
+    },
+    [trip.id]
+  );
+
   const syncFromServer = useCallback(async () => {
     if (draggingRef.current || savingRef.current > 0) {
       pendingSyncRef.current = true;
@@ -103,20 +129,20 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
     pendingSyncRef.current = false;
     const data = await fetchItems();
     // A drag may have started while the request was in flight.
-    if (data && !draggingRef.current && savingRef.current === 0) setItems(data);
-  }, [fetchItems]);
+    if (data && !draggingRef.current && savingRef.current === 0) applyLoaded(data);
+  }, [fetchItems, applyLoaded]);
 
   useEffect(() => {
     let cancelled = false;
     fetchItems().then((data) => {
       if (cancelled) return;
-      if (data) setItems(data);
+      applyLoaded(data);
       setLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [fetchItems]);
+  }, [fetchItems, applyLoaded]);
 
   // Reload whenever syncTick changes (not on mount — the effect above covers that).
   const lastTickRef = useRef(syncTick);
@@ -337,10 +363,17 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
               id="add-to-day-btn"
               className="btn btn-primary btn-sm"
               onClick={() => setShowAssignModal(true)}
+              disabled={readOnly}
             >
               + Add Spot
             </button>
           </div>
+
+          {readOnly && savedAt && (
+            <p style={{ color: "var(--text-muted)", fontSize: "12px", marginBottom: "12px" }}>
+              Offline — saved {formatSavedAt(savedAt)}
+            </p>
+          )}
 
           {error && (
             <div
@@ -400,6 +433,7 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
               <button
                 className="btn btn-ghost btn-sm"
                 onClick={() => setShowAssignModal(true)}
+                disabled={readOnly}
               >
                 Select places
               </button>
@@ -419,7 +453,8 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
                     warning={closedWarning(placeFor(item)!, currentDayDate)}
                     currentDay={currentDay}
                     dayOptions={dayOptions}
-                    disabled={isPending}
+                    disabled={isPending || readOnly}
+                    calendarUrl={googleCalendarUrl(trip, item as CalendarItem, placeFor(item)!)}
                     onMove={(day) => moveToDay(item.id, day)}
                     onRemove={() => removeItem(item.id)}
                   />
@@ -456,7 +491,7 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
                       badge={`D${item.day_index}`}
                       currentDay={null}
                       dayOptions={dayOptions}
-                      disabled={isPending}
+                      disabled={isPending || readOnly}
                       onMove={(day) => moveToDay(item.id, day)}
                       onRemove={() => removeItem(item.id)}
                     />
@@ -630,6 +665,7 @@ function SortableCard({
   currentDay,
   dayOptions,
   disabled,
+  calendarUrl,
   onMove,
   onRemove,
 }: {
@@ -640,6 +676,7 @@ function SortableCard({
   currentDay: number;
   dayOptions: { day: number; label: string }[];
   disabled: boolean;
+  calendarUrl?: string | null;
   onMove: (day: number) => void;
   onRemove: () => void;
 }) {
@@ -651,7 +688,7 @@ function SortableCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id });
+  } = useSortable({ id: item.id, disabled });
 
   return (
     <div
@@ -681,6 +718,7 @@ function SortableCard({
         currentDay={currentDay}
         dayOptions={dayOptions}
         disabled={disabled}
+        calendarUrl={calendarUrl}
         onMove={onMove}
         onRemove={onRemove}
       />
@@ -726,6 +764,7 @@ function CardBody({
   currentDay,
   dayOptions,
   disabled,
+  calendarUrl,
   onMove,
   onRemove,
 }: {
@@ -735,6 +774,7 @@ function CardBody({
   currentDay?: number | null;
   dayOptions?: { day: number; label: string }[];
   disabled?: boolean;
+  calendarUrl?: string | null;
   onMove?: (day: number) => void;
   onRemove?: () => void;
 }) {
@@ -817,6 +857,16 @@ function CardBody({
         )}
         {warning && (
           <p style={{ color: "var(--red)", fontSize: "12px", fontWeight: 500, marginTop: "2px" }}>{warning}</p>
+        )}
+        {calendarUrl && (
+          <a
+            href={calendarUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "inline-block", color: "var(--blue)", fontSize: "11px", marginTop: "2px" }}
+          >
+            Add to Google Calendar
+          </a>
         )}
       </div>
 
