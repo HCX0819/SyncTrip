@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { useSearchParams } from "next/navigation";
 import type { Trip, SavedPlace, Category } from "@/lib/types";
 import PlaceCard from "./PlaceCard";
 import AddPlaceModal from "./AddPlaceModal";
@@ -23,6 +24,8 @@ const CATEGORIES: { value: Category | "all"; label: string }[] = [
   { value: "other", label: "⋯ Other" },
 ];
 
+const noopSubscribe = () => () => {};
+
 export default function MoodboardView({
   trip,
   places,
@@ -32,8 +35,24 @@ export default function MoodboardView({
   onVoteChanged,
 }: Props) {
   const [filter, setFilter] = useState<Category | "all">("all");
-  const [showAdd, setShowAdd] = useState(false);
+  const searchParams = useSearchParams();
+  // A link shared into the app via /share arrives as ?share=<url>.
+  const [sharedUrl, setSharedUrl] = useState(() => searchParams.get("share"));
+  const [showAdd, setShowAdd] = useState(() => !!searchParams.get("share"));
+  // AddPlaceModal portals into document.body, so it can't render during SSR.
+  const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const online = useOnlineStatus();
+
+  function closeAdd() {
+    setShowAdd(false);
+    if (sharedUrl) {
+      setSharedUrl(null);
+      // Drop ?share= so a refresh doesn't reopen the modal.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("share");
+      window.history.replaceState(null, "", url);
+    }
+  }
 
   const filtered = filter === "all" ? places : places.filter((p) => p.category === filter);
 
@@ -155,12 +174,13 @@ export default function MoodboardView({
         +
       </button>
 
-      {showAdd && (
+      {showAdd && hydrated && (
         <AddPlaceModal
           tripId={trip.id}
-          onClose={() => setShowAdd(false)}
+          initialUrl={sharedUrl}
+          onClose={closeAdd}
           onSaved={() => {
-            setShowAdd(false);
+            closeAdd();
             onPlaceAdded();
           }}
         />

@@ -43,7 +43,8 @@ export async function proxy(request: NextRequest) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
-    loginUrl.searchParams.set("next", pathname);
+    // Keep the query so a shared link (/share?url=…) survives signing in.
+    loginUrl.searchParams.set("next", pathname === "/share" ? pathname + request.nextUrl.search : pathname);
     return NextResponse.redirect(loginUrl);
   }
 
