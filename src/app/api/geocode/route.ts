@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isGeocodableQuery } from "@/lib/geocode";
+import { createRateLimiter, TtlCache } from "@/lib/rateLimit";
 
 export interface GeocodeFeature {
   id: string;
@@ -41,34 +42,8 @@ interface Bias {
 const BIAS_TTL_MS = 10 * 60 * 1000;
 const biasCache = new Map<string, { bias: Bias | null; expires: number }>();
 
-// Per-instance only (serverless instances don't share memory), but enough to
-// stop a single client from burning through the Mapbox quota.
-const RATE_LIMIT = 30;
-const RATE_WINDOW_MS = 60 * 1000;
-const rateWindows = new Map<string, { count: number; resets: number }>();
-
-const RESULT_TTL_MS = 24 * 60 * 60 * 1000;
-const RESULT_CACHE_MAX = 500;
-const resultCache = new Map<string, { results: GeocodeFeature[]; expires: number }>();
-
-function isRateLimited(userId: string) {
-  const now = Date.now();
-  const w = rateWindows.get(userId);
-  if (!w || w.resets <= now) {
-    rateWindows.set(userId, { count: 1, resets: now + RATE_WINDOW_MS });
-    return false;
-  }
-  w.count += 1;
-  return w.count > RATE_LIMIT;
-}
-
-function cacheResults(key: string, results: GeocodeFeature[]) {
-  if (resultCache.size >= RESULT_CACHE_MAX) {
-    // Maps iterate in insertion order, so this evicts the oldest entry.
-    resultCache.delete(resultCache.keys().next().value!);
-  }
-  resultCache.set(key, { results, expires: Date.now() + RESULT_TTL_MS });
-}
+const isRateLimited = createRateLimiter(30, 60 * 1000);
+const resultCache = new TtlCache<GeocodeFeature[]>(24 * 60 * 60 * 1000);
 
 function getToken() {
   const token = process.env.MAPBOX_TOKEN ?? process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -181,12 +156,12 @@ export async function GET(request: NextRequest) {
     // Proximity changes ranking, so two trips in the same country can't share results.
     const cacheKey = `${bias ? `${bias.country},${bias.lon},${bias.lat}` : ""}|${q.toLowerCase()}`;
     const cached = resultCache.get(cacheKey);
-    if (cached && cached.expires > Date.now()) return Response.json(cached.results);
+    if (cached) return Response.json(cached);
 
     let results = await search(bias);
     // A vague destination can resolve to the wrong country; don't let it hide everything.
     if (results.length === 0 && bias) results = await search(null);
-    if (results.length > 0) cacheResults(cacheKey, results);
+    if (results.length > 0) resultCache.set(cacheKey, results);
     return Response.json(results);
   } catch {
     return Response.json([], { status: 502 });
