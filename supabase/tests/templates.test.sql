@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(18);
+select plan(20);
 
 -- Fixtures (as postgres, bypassing RLS) -------------------------------------
 insert into auth.users (id, email) values
@@ -41,6 +41,13 @@ insert into public.itinerary_items (trip_id, place_id, day_index, sort_order) va
 
 insert into public.votes (place_id, user_id, value) values
   ('cccccccc-0000-0000-0000-000000000001', '33333333-3333-3333-3333-333333333333', 'yaay');
+
+-- One ticked, assigned packing item and one to-do in each trip.
+insert into public.checklist_items (trip_id, list, title, done, assignee_id, sort_order) values
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'packing', 'Passport', true, '33333333-3333-3333-3333-333333333333', 1),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'todo', 'Book ryokan', false, null, 1),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'packing', 'Sunscreen', false, null, 1),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'todo', 'Call landlord re: key 4321', false, null, 1);
 
 -- Duplicating -----------------------------------------------------------------
 set local role authenticated;
@@ -127,6 +134,15 @@ select is_empty(
   'the copy starts with an empty activity feed'
 );
 
+select results_eq(
+  $$ select c.list, c.title, c.done, c.assignee_id, c.done_by
+     from public.checklist_items c
+     join public.trips t on t.id = c.trip_id where t.name = 'Kyoto again' order by c.list $$,
+  $$ values ('packing', 'Passport', false, null::uuid, null::uuid),
+            ('todo', 'Book ryokan', false, null::uuid, null::uuid) $$,
+  'checklists are copied unticked and unassigned'
+);
+
 -- Templates -------------------------------------------------------------------
 set local role authenticated;
 set local request.jwt.claims = '{"sub": "22222222-2222-2222-2222-222222222222", "role": "authenticated"}';
@@ -173,6 +189,13 @@ select results_eq(
      where t.name = 'My Lisbon' $$,
   $$ values ('2027-03-06'::date, '22222222-2222-2222-2222-222222222222'::uuid, null::text) $$,
   'template copy is owned by the caller, sized by its itinerary, without notes'
+);
+
+select results_eq(
+  $$ select c.list, c.title from public.checklist_items c
+     join public.trips t on t.id = c.trip_id where t.name = 'My Lisbon' $$,
+  $$ values ('packing', 'Sunscreen') $$,
+  'template copy gets the packing list but not the to-dos'
 );
 
 set local role anon;

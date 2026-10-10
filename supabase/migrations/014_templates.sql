@@ -110,11 +110,16 @@ begin
   $sql$, v_time_cols, v_time_vals)
   using p_source, v_new_id, p_user;
 
-  -- The copy's activity triggers logged every place and itinerary row above;
-  -- start the new trip with an empty feed instead.
-  delete from public.trip_activity where trip_id = v_new_id;
+  -- Checklists come across unticked and unassigned: the source's members
+  -- aren't members of the copy.
+  insert into public.checklist_items (trip_id, list, title, sort_order, created_by)
+  select v_new_id, list, title, sort_order, p_user
+  from public.checklist_items
+  where trip_id = p_source;
 
-  -- TODO: copy checklist_items (migration 013), reset to not done.
+  -- The copy's activity triggers logged every place, itinerary and checklist
+  -- row above; start the new trip with an empty feed instead.
+  delete from public.trip_activity where trip_id = v_new_id;
 
   return v_new_id;
 end;
@@ -164,6 +169,8 @@ begin
   -- Notes are private to the template's members (get_template never shows
   -- them), so strangers' copies don't get them either.
   update public.saved_places set note = null where trip_id = v_new_id;
+  -- Same for to-dos (bookings, references); packing lists are generic enough to share.
+  delete from public.checklist_items where trip_id = v_new_id and list = 'todo';
 
   return v_new_id;
 end;
