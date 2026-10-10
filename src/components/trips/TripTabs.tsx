@@ -6,14 +6,17 @@ import type { Trip, TripMember, SavedPlace } from "@/lib/types";
 import MoodboardView from "./MoodboardView";
 import MapView from "./MapView";
 import ItineraryView from "./ItineraryView";
+import ListsView from "./ListsView";
+import ExpensesView from "./ExpensesView";
 import TripSettingsSheet from "./TripSettingsSheet";
 import ActivityFeedSheet from "./ActivityFeedSheet";
 import { useOnlineStatus } from "@/components/layout/OfflineBanner";
 import { createClient } from "@/lib/supabase/client";
 import { formatTripDate } from "@/lib/dates";
 import { useTripSync } from "@/lib/useTripSync";
+import { formatSavedAt, loadTripSnapshot, saveTripSnapshot } from "@/lib/tripSnapshot";
 
-type Tab = "moodboard" | "map" | "itinerary";
+type Tab = "moodboard" | "map" | "itinerary" | "expenses" | "lists";
 
 interface Props {
   trip: Trip;
@@ -22,7 +25,11 @@ interface Props {
   currentUserId: string;
 }
 
-export default function TripTabs({ trip, members, places: initialPlaces, currentUserId }: Props) {
+export default function TripTabs({ trip: serverTrip, members: serverMembers, places: initialPlaces, currentUserId }: Props) {
+  // Set when offline and a load failed: the last saved copy is shown instead.
+  const [snapshot, setSnapshot] = useState<{ trip?: Trip; members?: TripMember[]; savedAt: string } | null>(null);
+  const trip = snapshot?.trip ?? serverTrip;
+  const members = snapshot?.members ?? serverMembers;
   const [activeTab, setActiveTab] = useState<Tab>("moodboard");
   const [places, setPlaces] = useState(initialPlaces);
   const [showInvite, setShowInvite] = useState(false);
@@ -56,16 +63,61 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
     { id: "moodboard", label: "Moodboard", icon: "⊞" },
     { id: "map", label: "Map", icon: "◎" },
     { id: "itinerary", label: "Itinerary", icon: "☰" },
+    { id: "expenses", label: "Expenses", icon: "¤" },
+    { id: "lists", label: "Lists", icon: "☑" },
   ];
 
-  async function refreshPlaces() {
-    const { data } = await supabase
+  async function fetchPlaces() {
+    const { data, error } = await supabase
       .from("saved_places")
-      .select("*, votes(*)")
+      .select("*, votes(*), place_comments(count)")
       .eq("trip_id", trip.id)
       .order("created_at", { ascending: false });
-    if (data) setPlaces(data as SavedPlace[]);
+    return error || !data ? null : (data as SavedPlace[]);
   }
+
+  // Saves fresh places for offline use; when a load fails offline, falls back
+  // to the saved snapshot.
+  function applyPlaces(data: SavedPlace[] | null) {
+    if (data) {
+      setPlaces(data);
+      setSnapshot(null);
+      saveTripSnapshot(trip.id, { places: data });
+      return;
+    }
+    if (navigator.onLine) return;
+    const saved = loadTripSnapshot(trip.id);
+    if (!saved) return;
+    if (saved.places) setPlaces(saved.places);
+    setSnapshot({ trip: saved.trip, members: saved.members, savedAt: saved.updated.places ?? saved.savedAt });
+  }
+
+  async function refreshPlaces() {
+    applyPlaces(await fetchPlaces());
+  }
+
+  // Keep the server-rendered trip and members in the snapshot. Online only, so
+  // a page served from the offline cache doesn't overwrite a newer snapshot.
+  useEffect(() => {
+    if (navigator.onLine) saveTripSnapshot(serverTrip.id, { trip: serverTrip, members: serverMembers });
+  }, [serverTrip, serverMembers]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (navigator.onLine) {
+      saveTripSnapshot(trip.id, { places: initialPlaces });
+    } else {
+      // Opened offline (page from the service worker cache): try once, then
+      // fall back to the snapshot.
+      fetchPlaces().then((data) => {
+        if (!cancelled) applyPlaces(data);
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip.id]);
 
   async function fetchUnread() {
     const { data } = await supabase.rpc("get_unread_activity_count", { p_trip_id: trip.id });
@@ -155,6 +207,11 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
                 </p>
               )}
             </div>
+            {!online && snapshot && (
+              <p style={{ color: "var(--text-muted)", fontSize: "11px", marginTop: "4px" }}>
+                Offline — saved {formatSavedAt(snapshot.savedAt)}
+              </p>
+            )}
           </div>
 
           {/* Invite + settings buttons */}
@@ -324,6 +381,18 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
         )}
         {activeTab === "itinerary" && (
           <ItineraryView trip={trip} places={places} onUpdate={refreshPlaces} syncTick={syncTick} />
+        )}
+        {activeTab === "lists" && (
+          <ListsView tripId={trip.id} members={members} currentUserId={currentUserId} syncTick={syncTick} />
+        )}
+        {activeTab === "expenses" && (
+          <ExpensesView
+            trip={trip}
+            members={members}
+            places={places}
+            currentUserId={currentUserId}
+            syncTick={syncTick}
+          />
         )}
       </div>
 

@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TripActivity } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
+import { formatMoney } from "@/lib/settle";
 
 const PAGE_SIZE = 50;
-// Consecutive votes or reorders by the same person within this window show as one row.
+// Consecutive votes, reorders or checklist additions by the same person within this window show as one row.
 const GROUP_WINDOW_MS = 10 * 60 * 1000;
 
 interface Props {
@@ -18,6 +19,12 @@ interface Props {
 interface Row {
   activity: TripActivity;
   count: number;
+}
+
+// Uses the currency stored with the event, so a later currency change
+// doesn't rewrite history.
+function amount(a: TripActivity): string {
+  return formatMoney(a.payload.amount_cents ?? 0, a.payload.currency ?? "USD");
 }
 
 function describe(a: TripActivity, count: number): string {
@@ -42,6 +49,26 @@ function describe(a: TripActivity, count: number): string {
       return "left the trip";
     case "member_removed":
       return `removed ${p.name ?? "a member"} from the trip`;
+    case "checklist_added":
+      return count > 1
+        ? `added ${count} checklist items`
+        : `added ${p.title ?? "an item"} to the ${p.list === "todo" ? "to-do" : "packing"} list`;
+    case "checklist_done":
+      return `checked off ${p.title ?? "an item"}`;
+    case "comment_added":
+      return typeof p.body === "string" && p.body
+        ? `commented on ${title}: “${p.body}${p.body.length >= 80 ? "…" : ""}”`
+        : `commented on ${title}`;
+    case "expense_added":
+      return `added an expense: ${p.description ?? "expense"} (${amount(a)})`;
+    case "expense_updated":
+      return `edited the expense ${p.description ?? ""} (${amount(a)})`;
+    case "expense_deleted":
+      return p.is_settlement
+        ? `deleted a ${amount(a)} payment`
+        : `deleted the expense ${p.description ?? ""} (${amount(a)})`;
+    case "settlement_recorded":
+      return `recorded a ${amount(a)} payment from ${p.from_name ?? "someone"} to ${p.to_name ?? "someone"}`;
     default:
       return "made a change";
   }
@@ -53,7 +80,7 @@ function groupRows(activities: TripActivity[]): Row[] {
     const prev = rows[rows.length - 1];
     if (
       prev &&
-      (a.kind === "vote" || a.kind === "itinerary_reordered") &&
+      (a.kind === "vote" || a.kind === "itinerary_reordered" || a.kind === "checklist_added") &&
       prev.activity.kind === a.kind &&
       prev.activity.actor_id === a.actor_id &&
       new Date(prev.activity.created_at).getTime() - new Date(a.created_at).getTime() < GROUP_WINDOW_MS
@@ -66,7 +93,7 @@ function groupRows(activities: TripActivity[]): Row[] {
   return rows;
 }
 
-function timeAgo(iso: string): string {
+export function timeAgo(iso: string): string {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;

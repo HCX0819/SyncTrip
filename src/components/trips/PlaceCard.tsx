@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import type { SavedPlace, VoteValue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import EditPlaceModal from "./EditPlaceModal";
+import PlaceCommentsSheet from "./PlaceCommentsSheet";
 import { useOnlineStatus } from "@/components/layout/OfflineBanner";
 
 interface Props {
@@ -28,6 +29,8 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
   const isFavorite = memberCount > 0 && yaayCount > memberCount / 2;
   const [optimisticVote, setOptimisticVote] = useState<VoteValue | undefined>(myVote);
   const [showEdit, setShowEdit] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const commentCount = place.place_comments?.[0]?.count ?? 0;
   const online = useOnlineStatus();
   const [isPending, startTransition] = useTransition();
   const supabase = createClient();
@@ -181,6 +184,26 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
             </span>
           </div>
 
+          {(place.booking_status === "needed" || place.booking_status === "booked") && (
+            <p style={{ marginBottom: "8px" }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  padding: "3px 10px",
+                  borderRadius: "99px",
+                  border: "1px solid",
+                  borderColor: place.booking_status === "needed" ? "var(--red)" : "var(--border)",
+                  color: place.booking_status === "needed" ? "var(--red)" : "var(--text-muted)",
+                }}
+              >
+                {place.booking_status === "needed" ? "Needs booking" : "Booked ✅"}
+                {place.booking_status === "booked" && place.booking_ref && ` · ${place.booking_ref}`}
+              </span>
+            </p>
+          )}
+
           {place.address && (
             <p style={{ color: "var(--text-muted)", fontSize: "12px", marginBottom: "8px" }}>
               📍 {place.address}
@@ -240,6 +263,21 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
               ✕ Naay <span style={{ fontWeight: 600 }}>{displayNaay}</span>
             </button>
             <button
+              id={`comments-${place.id}`}
+              onClick={() => setShowComments(true)}
+              aria-label={`Comments (${commentCount})`}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "var(--text-muted)",
+                fontSize: "13px",
+                cursor: "pointer",
+                padding: "6px 4px",
+              }}
+            >
+              💬 {commentCount}
+            </button>
+            <button
               onClick={() => setShowEdit(true)}
               style={{
                 marginLeft: "auto",
@@ -278,6 +316,17 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
             setShowEdit(false);
             onVoteChanged();
           }}
+        />
+      )}
+
+      {showComments && (
+        <PlaceCommentsSheet
+          placeId={place.id}
+          tripId={place.trip_id}
+          placeTitle={place.title}
+          currentUserId={currentUserId}
+          onClose={() => setShowComments(false)}
+          onChanged={onVoteChanged}
         />
       )}
     </>

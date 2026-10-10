@@ -3,9 +3,10 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import type { Trip, TripMember } from "@/lib/types";
+import type { Expense, Trip, TripMember } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { uploadTripPhoto } from "@/lib/uploadPhoto";
+import { COMMON_CURRENCIES, computeBalances, formatMoney } from "@/lib/settle";
 
 interface Props {
   trip: Trip;
@@ -49,21 +50,28 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
     start_date: trip.start_date || "",
     end_date: trip.end_date || "",
     cover_url: trip.cover_url || "",
+    currency: trip.currency || "USD",
   });
   // Which action is in flight, so only that button shows a spinner label.
-  const [busy, setBusy] = useState<"save" | "upload" | "remove" | "leave" | "delete" | null>(null);
+  const [busy, setBusy] = useState<
+    "save" | "upload" | "remove" | "leave" | "delete" | "duplicate" | "template" | null
+  >(null);
   const [detailsError, setDetailsError] = useState<string | null>(null);
   const [detailsSaved, setDetailsSaved] = useState(false);
   const [membersError, setMembersError] = useState<string | null>(null);
   const [dangerError, setDangerError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [isPublicTemplate, setIsPublicTemplate] = useState(!!trip.is_public_template);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicateForm, setDuplicateForm] = useState({ name: `${trip.name} (copy)`, start_date: "" });
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   // Ownership passes to whoever joined first among the remaining members.
   const successor = [...members]
     .filter((m) => m.user_id !== currentUserId)
     .sort((a, b) => a.joined_at.localeCompare(b.joined_at) || a.id.localeCompare(b.id))[0];
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
     setDetailsSaved(false);
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
@@ -104,6 +112,7 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
         start_date: form.start_date || null,
         end_date: form.end_date || null,
         cover_url: form.cover_url || null,
+        currency: form.currency,
       })
       .eq("id", trip.id)
       .select("id");
@@ -119,10 +128,32 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
     router.refresh();
   }
 
+  // Net expense balance for one member (positive = the group owes them).
+  async function memberBalance(userId: string) {
+    const { data } = await supabase
+      .from("expenses")
+      .select("id, paid_by, amount_cents, expense_shares(expense_id, user_id, amount_cents)")
+      .eq("trip_id", trip.id);
+    const expenses = (data ?? []) as Expense[];
+    return computeBalances(expenses, expenses.flatMap((e) => e.expense_shares ?? []))[userId] ?? 0;
+  }
+
   async function handleRemove(member: TripMember) {
-    if (!confirm(`Remove ${memberName(member)} from ${trip.name}?`)) return;
     setBusy("remove");
     setMembersError(null);
+    const balance = await memberBalance(member.user_id);
+    setBusy(null);
+    let message = `Remove ${memberName(member)} from ${trip.name}?`;
+    if (balance !== 0) {
+      const amount = formatMoney(Math.abs(balance), trip.currency || "USD");
+      message =
+        (balance > 0
+          ? `${memberName(member)} is still owed ${amount}.`
+          : `${memberName(member)} still owes ${amount}.`) +
+        ` Their expenses stay on the trip, but they won't be able to settle up here. Remove them anyway?`;
+    }
+    if (!confirm(message)) return;
+    setBusy("remove");
     const { error } = await supabase.rpc("remove_member", {
       p_trip_id: trip.id,
       p_user_id: member.user_id,
@@ -132,6 +163,42 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
       setMembersError(error.message);
       return;
     }
+    router.refresh();
+  }
+
+  async function handleDuplicate(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy("duplicate");
+    setCopyError(null);
+    const { data, error } = await supabase.rpc("duplicate_trip", {
+      p_trip_id: trip.id,
+      p_name: duplicateForm.name.trim(),
+      p_start_date: duplicateForm.start_date || null,
+    });
+    if (error || !data) {
+      setBusy(null);
+      setCopyError(error?.message ?? "Couldn't duplicate this trip.");
+      return;
+    }
+    router.push(`/trips/${data}`);
+    onClose();
+  }
+
+  async function handleTemplateToggle(e: React.ChangeEvent<HTMLInputElement>) {
+    const next = e.target.checked;
+    setBusy("template");
+    setCopyError(null);
+    const { data, error } = await supabase
+      .from("trips")
+      .update({ is_public_template: next })
+      .eq("id", trip.id)
+      .select("id");
+    setBusy(null);
+    if (error || !data?.length) {
+      setCopyError(error?.message ?? "Only the trip owner can share this trip as a template.");
+      return;
+    }
+    setIsPublicTemplate(next);
     router.refresh();
   }
 
@@ -247,6 +314,31 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
                     onChange={handleChange}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label htmlFor="settings-currency" style={labelStyle}>
+                  CURRENCY
+                </label>
+                <select
+                  id="settings-currency"
+                  className="input"
+                  name="currency"
+                  value={form.currency}
+                  onChange={handleChange}
+                >
+                  {(COMMON_CURRENCIES.includes(form.currency)
+                    ? COMMON_CURRENCIES
+                    : [form.currency, ...COMMON_CURRENCIES]
+                  ).map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <p style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "6px" }}>
+                  Used for all of this trip&rsquo;s expenses. Changing it doesn&rsquo;t convert existing amounts.
+                </p>
               </div>
 
               {/* Cover photo */}
@@ -397,6 +489,125 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
             ))}
           </div>
           {membersError && <p style={errorStyle}>{membersError}</p>}
+        </div>
+
+        {/* Copy / template */}
+        <div style={{ marginBottom: "32px" }}>
+          <p style={sectionTitleStyle}>COPY</p>
+          {isOwner && (
+            <label
+              htmlFor="public-template-toggle"
+              style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginBottom: "16px", cursor: "pointer" }}
+            >
+              <input
+                id="public-template-toggle"
+                type="checkbox"
+                checked={isPublicTemplate}
+                onChange={handleTemplateToggle}
+                disabled={busy !== null}
+                style={{ marginTop: "3px", accentColor: "var(--blue)" }}
+              />
+              <span>
+                <span style={{ display: "block", fontSize: "14px", color: "var(--text)" }}>
+                  Share as public template
+                </span>
+                <span style={{ display: "block", fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
+                  Anyone on SyncTrip can see the name, destination, places and days, and copy them. Notes and
+                  members stay private.
+                </span>
+              </span>
+            </label>
+          )}
+
+          {duplicateOpen ? (
+            <form onSubmit={handleDuplicate} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label htmlFor="duplicate-trip-name" style={labelStyle}>
+                  NEW TRIP NAME *
+                </label>
+                <input
+                  id="duplicate-trip-name"
+                  className="input"
+                  value={duplicateForm.name}
+                  onChange={(e) => setDuplicateForm((prev) => ({ ...prev, name: e.target.value }))}
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="duplicate-start-date" style={labelStyle}>
+                  START DATE
+                </label>
+                <input
+                  id="duplicate-start-date"
+                  className="input"
+                  type="date"
+                  value={duplicateForm.start_date}
+                  onChange={(e) => setDuplicateForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                />
+              </div>
+              <p style={{ color: "var(--text-muted)", fontSize: "12px" }}>
+                Copies places, the itinerary and checklists (not votes or comments) into a new trip that you own.
+              </p>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setDuplicateOpen(false)}
+                  disabled={busy !== null}
+                >
+                  Cancel
+                </button>
+                <button
+                  id="duplicate-trip-submit"
+                  type="submit"
+                  className="btn btn-primary btn-sm"
+                  disabled={busy !== null || !duplicateForm.name.trim()}
+                >
+                  {busy === "duplicate" ? "Duplicating…" : "Duplicate"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              id="duplicate-trip-btn"
+              type="button"
+              className="btn btn-ghost btn-full"
+              onClick={() => setDuplicateOpen(true)}
+              disabled={busy !== null}
+            >
+              Duplicate trip
+            </button>
+          )}
+          {copyError && <p style={errorStyle}>{copyError}</p>}
+        </div>
+
+        {/* Print / export */}
+        <div style={{ marginBottom: "32px" }}>
+          <p style={sectionTitleStyle}>PRINT / EXPORT</p>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <a id="print-trip-link" href={`/trips/${trip.id}/print`} className="btn btn-ghost btn-sm">
+              🖨 Print itinerary
+            </a>
+            {trip.start_date ? (
+              <a
+                id="download-ics-link"
+                href={`/api/trips/${trip.id}/calendar`}
+                download
+                className="btn btn-ghost btn-sm"
+              >
+                📅 Download .ics
+              </a>
+            ) : (
+              <button type="button" className="btn btn-ghost btn-sm" disabled>
+                📅 Download .ics
+              </button>
+            )}
+          </div>
+          <p style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "8px" }}>
+            {trip.start_date
+              ? "Import the .ics file into Google, Apple or Outlook calendar."
+              : "Set trip dates to export the itinerary to a calendar."}
+          </p>
         </div>
 
         {/* Leave / delete */}

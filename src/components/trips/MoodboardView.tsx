@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { useSearchParams } from "next/navigation";
 import type { Trip, SavedPlace, Category } from "@/lib/types";
 import PlaceCard from "./PlaceCard";
 import AddPlaceModal from "./AddPlaceModal";
@@ -15,13 +16,19 @@ interface Props {
   onVoteChanged: () => void;
 }
 
-const CATEGORIES: { value: Category | "all"; label: string }[] = [
+// "needed" filters by booking status rather than category.
+type Filter = Category | "all" | "needed";
+
+const CATEGORIES: { value: Filter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "stay", label: "🏨 Stay" },
   { value: "eat", label: "🍜 Eat" },
   { value: "do", label: "🎯 Do" },
   { value: "other", label: "⋯ Other" },
+  { value: "needed", label: "Needs booking" },
 ];
+
+const noopSubscribe = () => () => {};
 
 export default function MoodboardView({
   trip,
@@ -31,11 +38,32 @@ export default function MoodboardView({
   onPlaceAdded,
   onVoteChanged,
 }: Props) {
-  const [filter, setFilter] = useState<Category | "all">("all");
-  const [showAdd, setShowAdd] = useState(false);
+  const [filter, setFilter] = useState<Filter>("all");
+  const searchParams = useSearchParams();
+  // A link shared into the app via /share arrives as ?share=<url>.
+  const [sharedUrl, setSharedUrl] = useState(() => searchParams.get("share"));
+  const [showAdd, setShowAdd] = useState(() => !!searchParams.get("share"));
+  // AddPlaceModal portals into document.body, so it can't render during SSR.
+  const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const online = useOnlineStatus();
 
-  const filtered = filter === "all" ? places : places.filter((p) => p.category === filter);
+  function closeAdd() {
+    setShowAdd(false);
+    if (sharedUrl) {
+      setSharedUrl(null);
+      // Drop ?share= so a refresh doesn't reopen the modal.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("share");
+      window.history.replaceState(null, "", url);
+    }
+  }
+
+  const filtered =
+    filter === "all"
+      ? places
+      : filter === "needed"
+        ? places.filter((p) => p.booking_status === "needed")
+        : places.filter((p) => p.category === filter);
 
   return (
     <div
@@ -95,7 +123,9 @@ export default function MoodboardView({
           <p style={{ fontSize: "14px" }}>
             {filter === "all"
               ? "Add the first place to get started."
-              : `No ${filter} spots saved yet.`}
+              : filter === "needed"
+                ? "Nothing needs booking."
+                : `No ${filter} spots saved yet.`}
           </p>
         </div>
       ) : (
@@ -155,12 +185,13 @@ export default function MoodboardView({
         +
       </button>
 
-      {showAdd && (
+      {showAdd && hydrated && (
         <AddPlaceModal
           tripId={trip.id}
-          onClose={() => setShowAdd(false)}
+          initialUrl={sharedUrl}
+          onClose={closeAdd}
           onSaved={() => {
-            setShowAdd(false);
+            closeAdd();
             onPlaceAdded();
           }}
         />

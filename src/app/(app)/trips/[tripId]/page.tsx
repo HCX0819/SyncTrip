@@ -14,7 +14,7 @@ async function getTripData(tripId: string, userId: string) {
       .eq("trip_id", tripId),
     supabase
       .from("saved_places")
-      .select("*, votes(*)")
+      .select("*, votes(*), place_comments(count)")
       .eq("trip_id", tripId)
       .order("created_at", { ascending: false }),
   ]);
