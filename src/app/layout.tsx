@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Playfair_Display } from "next/font/google";
+import OfflineBanner from "@/components/layout/OfflineBanner";
 import "./globals.css";
 
 const playfairDisplay = Playfair_Display({
@@ -15,6 +16,13 @@ export const metadata: Metadata = {
   description:
     "Group travel planning made effortless. Save places, vote on favorites, and build your itinerary together.",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: { url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -43,10 +51,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`grain theme-noir ${playfairDisplay.variable}`}>
-      <head>
-        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-      </head>
-      <body className="min-h-dvh">{children}</body>
+      <body className="min-h-dvh">
+        <OfflineBanner />
+        {children}
+      </body>
     </html>
   );
 }
