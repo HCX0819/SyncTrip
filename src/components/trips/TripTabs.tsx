@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Trip, TripMember, SavedPlace } from "@/lib/types";
 import MoodboardView from "./MoodboardView";
 import MapView from "./MapView";
 import ItineraryView from "./ItineraryView";
 import TripSettingsSheet from "./TripSettingsSheet";
+import ActivityFeedSheet from "./ActivityFeedSheet";
 import { useOnlineStatus } from "@/components/layout/OfflineBanner";
 import { createClient } from "@/lib/supabase/client";
 import { formatTripDate } from "@/lib/dates";
@@ -26,6 +27,8 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
   const [places, setPlaces] = useState(initialPlaces);
   const [showInvite, setShowInvite] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showActivity, setShowActivity] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   // Local copy so a reset link shows immediately, before the page refreshes.
   const [inviteToken, setInviteToken] = useState(trip.invite_token);
   const [resettingInvite, setResettingInvite] = useState(false);
@@ -64,14 +67,36 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
     if (data) setPlaces(data as SavedPlace[]);
   }
 
+  async function fetchUnread() {
+    const { data } = await supabase.rpc("get_unread_activity_count", { p_trip_id: trip.id });
+    return typeof data === "number" ? data : null;
+  }
+
+  async function refreshUnread() {
+    const count = await fetchUnread();
+    if (count !== null) setUnreadCount(count);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchUnread().then((count) => {
+      if (!cancelled && count !== null) setUnreadCount(count);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip.id]);
+
   // Pick up other members' places, votes, trip edits and membership changes.
   // Paused while a sheet is open so the form underneath isn't replaced.
   const syncTick = useTripSync(
     () => {
       refreshPlaces();
+      refreshUnread();
       router.refresh();
     },
-    { paused: showInvite || showSettings }
+    { paused: showInvite || showSettings || showActivity }
   );
   const online = useOnlineStatus();
 
@@ -134,6 +159,40 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
 
           {/* Invite + settings buttons */}
           <div style={{ display: "flex", gap: "8px", flexShrink: 0, marginLeft: "12px" }}>
+            <button
+              id="activity-btn"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                setShowActivity(true);
+                setUnreadCount(0);
+              }}
+              aria-label={unreadCount > 0 ? `Activity, ${unreadCount} new` : "Activity"}
+              title="Activity"
+              style={{ position: "relative" }}
+            >
+              🔔
+              {unreadCount > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: -4,
+                    right: -4,
+                    minWidth: 18,
+                    height: 18,
+                    padding: "0 5px",
+                    borderRadius: 99,
+                    background: "var(--red)",
+                    color: "#fff",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    lineHeight: "18px",
+                    textAlign: "center",
+                  }}
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
             <button
               id="invite-btn"
               className="btn btn-ghost btn-sm"
@@ -347,6 +406,14 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
           members={members}
           currentUserId={currentUserId}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showActivity && (
+        <ActivityFeedSheet
+          tripId={trip.id}
+          currentUserId={currentUserId}
+          onClose={() => setShowActivity(false)}
         />
       )}
     </div>
