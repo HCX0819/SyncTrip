@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import type { Trip } from "@/lib/types";
+import { formatTripDate } from "@/lib/dates";
 
 interface UserTripMembership {
   trip_id: string;
@@ -20,12 +21,8 @@ async function getTrips(userId: string): Promise<UserTripMembership[]> {
 }
 
 function TripCard({ trip, role }: { trip: Trip; role: string }) {
-  const startDate = trip.start_date
-    ? new Date(trip.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-    : null;
-  const endDate = trip.end_date
-    ? new Date(trip.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : null;
+  const startDate = formatTripDate(trip.start_date, { month: "short", day: "numeric" });
+  const endDate = formatTripDate(trip.end_date, { month: "short", day: "numeric", year: "numeric" });
 
   return (
     <Link
