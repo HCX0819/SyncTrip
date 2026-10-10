@@ -63,6 +63,21 @@ export interface ItineraryItem {
   place?: SavedPlace;
 }
 
+export type ChecklistList = "packing" | "todo";
+
+export interface ChecklistItem {
+  id: string;
+  trip_id: string;
+  list: ChecklistList;
+  title: string;
+  assignee_id: string | null;
+  done: boolean;
+  done_by: string | null;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+}
+
 export type ActivityKind =
   | "place_added"
   | "place_deleted"
@@ -72,7 +87,9 @@ export type ActivityKind =
   | "itinerary_reordered"
   | "member_joined"
   | "member_left"
-  | "member_removed";
+  | "member_removed"
+  | "checklist_added"
+  | "checklist_done";
 
 export interface TripActivity {
   id: string;

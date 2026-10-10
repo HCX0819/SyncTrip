@@ -6,7 +6,7 @@ import type { TripActivity } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 
 const PAGE_SIZE = 50;
-// Consecutive votes or reorders by the same person within this window show as one row.
+// Consecutive votes, reorders or checklist additions by the same person within this window show as one row.
 const GROUP_WINDOW_MS = 10 * 60 * 1000;
 
 interface Props {
@@ -42,6 +42,12 @@ function describe(a: TripActivity, count: number): string {
       return "left the trip";
     case "member_removed":
       return `removed ${p.name ?? "a member"} from the trip`;
+    case "checklist_added":
+      return count > 1
+        ? `added ${count} checklist items`
+        : `added ${p.title ?? "an item"} to the ${p.list === "todo" ? "to-do" : "packing"} list`;
+    case "checklist_done":
+      return `checked off ${p.title ?? "an item"}`;
     default:
       return "made a change";
   }
@@ -53,7 +59,7 @@ function groupRows(activities: TripActivity[]): Row[] {
     const prev = rows[rows.length - 1];
     if (
       prev &&
-      (a.kind === "vote" || a.kind === "itinerary_reordered") &&
+      (a.kind === "vote" || a.kind === "itinerary_reordered" || a.kind === "checklist_added") &&
       prev.activity.kind === a.kind &&
       prev.activity.actor_id === a.actor_id &&
       new Date(prev.activity.created_at).getTime() - new Date(a.created_at).getTime() < GROUP_WINDOW_MS
