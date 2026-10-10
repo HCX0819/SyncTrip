@@ -2,6 +2,7 @@ export type Category = "stay" | "eat" | "do" | "other";
 export type VoteValue = "yaay" | "naay";
 export type MemberRole = "owner" | "member";
 export type BookingStatus = "none" | "needed" | "booked";
+export type TravelMode = "walk" | "drive";
 
 export interface Trip {
   id: string;
@@ -14,6 +15,7 @@ export interface Trip {
   cover_url?: string | null;
   invite_token?: string;
   is_public_template?: boolean;
+  travel_mode?: TravelMode;
 }
 
 /** Row from the list_templates() RPC: display fields only. */
@@ -102,6 +104,9 @@ export interface ItineraryItem {
   place_id: string;
   day_index: number;
   sort_order: number;
+  /** Postgres `time` ("HH:MM:SS"), when set. */
+  start_time?: string | null;
+  end_time?: string | null;
   place?: SavedPlace;
 }
 
