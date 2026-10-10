@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition, type HTMLAttributes, type Ref } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, useTransition, type HTMLAttributes, type ReactNode, type Ref } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -27,6 +27,14 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Trip, SavedPlace, ItineraryItem } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { tripDayCount, tripDayDate } from "@/lib/dates";
+import { computeDayLoad, type LngLat } from "@/lib/travel";
+import { useRouteLegs } from "@/lib/useRouteLegs";
+import { useTravelMode } from "@/lib/useTravelMode";
+import { isInWeatherWindow, useWeather } from "@/lib/useWeather";
+import { dateKey } from "@/lib/weather";
+import { DayLoadSummary, TravelLeg, TravelModeToggle } from "./TravelLeg";
+import ItemTimePicker from "./ItemTimePicker";
+import DayWeather from "./DayWeather";
 
 interface Props {
   trip: Trip;
@@ -64,6 +72,8 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
   const [isPending, startTransition] = useTransition();
 
   const [supabase] = useState(() => createClient());
+  const [travelMode, setTravelMode] = useTravelMode(trip, supabase);
+  const weather = useWeather(trip.id, trip.start_date, trip.end_date);
 
   // Background syncs must not clobber an in-flight drag or optimistic save.
   const draggingRef = useRef(false);
@@ -127,6 +137,21 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
     items.filter((i) => i.day_index === day && placeFor(i)).sort(bySortOrder);
 
   const currentDayItems = dayItems(currentDay);
+  // Travel legs between consecutive stops of the current day, and the day's load.
+  const currentDayPoints = currentDayItems.map((item): LngLat | null => {
+    const p = placeFor(item);
+    return p && p.latitude != null && p.longitude != null ? [p.longitude, p.latitude] : null;
+  });
+  const route = useRouteLegs(trip.id, travelMode, currentDayPoints);
+  const dayLoad = computeDayLoad(
+    currentDayItems.map((item) => ({ ...item, category: placeFor(item)!.category })),
+    route.legs
+  );
+
+  const currentDate = tripDayDate(trip.start_date, currentDay);
+  const currentWeather =
+    weather && currentDate && isInWeatherWindow(currentDate) ? weather.get(dateKey(currentDate)) : undefined;
+
   const unscheduledItems = items
     .filter((i) => (i.day_index < 1 || i.day_index > totalDays) && placeFor(i))
     .sort((a, b) => a.day_index - b.day_index || bySortOrder(a, b));
@@ -213,6 +238,29 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
       } else if (over.id !== active.id) {
         reorderWithinDay(String(active.id), String(over.id));
       }
+    }
+    if (savingRef.current === 0 && pendingSyncRef.current) syncFromServer();
+  }
+
+  // Saves an item's times optimistically; reverts just that item on failure.
+  async function saveTimes(itemId: string, start: string | null, end: string | null) {
+    const before = items.find((i) => i.id === itemId);
+    if (!before) return;
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, start_time: start, end_time: end } : i)));
+    setError(null);
+    savingRef.current += 1;
+    const { error: updateError } = await supabase
+      .from("itinerary_items")
+      .update({ start_time: start, end_time: end })
+      .eq("id", itemId);
+    savingRef.current -= 1;
+    if (updateError) {
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === itemId ? { ...i, start_time: before.start_time, end_time: before.end_time } : i
+        )
+      );
+      setError("Couldn't save the time. Please try again.");
     }
     if (savingRef.current === 0 && pendingSyncRef.current) syncFromServer();
   }
@@ -312,27 +360,34 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
             }}
           >
             <div>
-              <h2
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontSize: "22px",
-                  fontWeight: 400,
-                }}
-              >
-                {dayLabel(currentDay)}
-              </h2>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <h2
+                  style={{
+                    fontFamily: "var(--font-serif)",
+                    fontSize: "22px",
+                    fontWeight: 400,
+                  }}
+                >
+                  {dayLabel(currentDay)}
+                </h2>
+                {currentWeather && <DayWeather day={currentWeather} />}
+              </div>
               <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>
                 {currentDayItems.length}{" "}
                 {currentDayItems.length === 1 ? "activity" : "activities"} scheduled
               </p>
+              {!loading && currentDayItems.length > 0 && <DayLoadSummary load={dayLoad} />}
             </div>
-            <button
-              id="add-to-day-btn"
-              className="btn btn-primary btn-sm"
-              onClick={() => setShowAssignModal(true)}
-            >
-              + Add Spot
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+              <TravelModeToggle mode={travelMode} onChange={setTravelMode} />
+              <button
+                id="add-to-day-btn"
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowAssignModal(true)}
+              >
+                + Add Spot
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -404,17 +459,34 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
             >
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {currentDayItems.map((item, index) => (
-                  <SortableCard
-                    key={item.id}
-                    item={item}
-                    place={placeFor(item)!}
-                    index={index}
-                    currentDay={currentDay}
-                    dayOptions={dayOptions}
-                    disabled={isPending}
-                    onMove={(day) => moveToDay(item.id, day)}
-                    onRemove={() => removeItem(item.id)}
-                  />
+                  <Fragment key={item.id}>
+                    {index > 0 && (
+                      <TravelLeg
+                        leg={route.legs[index - 1]}
+                        mode={travelMode}
+                        exact={route.exact}
+                        hidden={draggingId !== null}
+                      />
+                    )}
+                    <SortableCard
+                      item={item}
+                      place={placeFor(item)!}
+                      index={index}
+                      currentDay={currentDay}
+                      dayOptions={dayOptions}
+                      disabled={isPending}
+                      onMove={(day) => moveToDay(item.id, day)}
+                      onRemove={() => removeItem(item.id)}
+                      footer={
+                        <ItemTimePicker
+                          startTime={item.start_time}
+                          endTime={item.end_time}
+                          overlapping={dayLoad.overlapping.has(item.id)}
+                          onSave={(start, end) => saveTimes(item.id, start, end)}
+                        />
+                      }
+                    />
+                  </Fragment>
                 ))}
               </div>
             </SortableContext>
@@ -623,6 +695,7 @@ function SortableCard({
   disabled,
   onMove,
   onRemove,
+  footer,
 }: {
   item: ItineraryItem;
   place: SavedPlace;
@@ -632,6 +705,8 @@ function SortableCard({
   disabled: boolean;
   onMove: (day: number) => void;
   onRemove: () => void;
+  /** Full-width row under the card's main row (e.g. the time picker). */
+  footer?: ReactNode;
 }) {
   const {
     attributes,
@@ -652,6 +727,7 @@ function SortableCard({
         display: "flex",
         alignItems: "center",
         gap: "14px",
+        flexWrap: footer ? "wrap" : undefined,
         transform: CSS.Translate.toString(transform),
         transition,
         opacity: isDragging ? 0.4 : 1,
@@ -673,6 +749,7 @@ function SortableCard({
         onMove={onMove}
         onRemove={onRemove}
       />
+      {footer && <div style={{ flexBasis: "100%", marginTop: "-6px", paddingLeft: "22px" }}>{footer}</div>}
     </div>
   );
 }

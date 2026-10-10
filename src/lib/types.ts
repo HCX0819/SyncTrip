@@ -1,6 +1,7 @@
 export type Category = "stay" | "eat" | "do" | "other";
 export type VoteValue = "yaay" | "naay";
 export type MemberRole = "owner" | "member";
+export type TravelMode = "walk" | "drive";
 
 export interface Trip {
   id: string;
@@ -12,6 +13,7 @@ export interface Trip {
   created_at: string;
   cover_url?: string | null;
   invite_token?: string;
+  travel_mode?: TravelMode;
 }
 
 export interface TripMember {
@@ -60,6 +62,9 @@ export interface ItineraryItem {
   place_id: string;
   day_index: number;
   sort_order: number;
+  /** Postgres `time` ("HH:MM:SS"), when set. */
+  start_time?: string | null;
+  end_time?: string | null;
   place?: SavedPlace;
 }
 
