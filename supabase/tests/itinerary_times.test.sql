@@ -3,7 +3,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(10);
+select plan(13);
 
 -- Fixtures (as postgres, bypassing RLS) -------------------------------------
 insert into auth.users (id, email) values
@@ -110,6 +110,29 @@ select is(
   (select travel_mode from public.trips where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
   'drive',
   'owner travel_mode change persisted'
+);
+
+-- set_travel_mode() lets any member change it.
+set local role authenticated;
+set local request.jwt.claims = '{"sub": "33333333-3333-3333-3333-333333333333", "role": "authenticated"}';
+
+select lives_ok(
+  $$ select public.set_travel_mode('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'walk') $$,
+  'member can set travel_mode through set_travel_mode()'
+);
+
+select is(
+  (select travel_mode from public.trips where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  'walk',
+  'member travel_mode change persisted'
+);
+
+set local request.jwt.claims = '{"sub": "22222222-2222-2222-2222-222222222222", "role": "authenticated"}';
+
+select throws_ok(
+  $$ select public.set_travel_mode('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'drive') $$,
+  '42501', null,
+  'non-member cannot set travel_mode'
 );
 
 select * from finish();

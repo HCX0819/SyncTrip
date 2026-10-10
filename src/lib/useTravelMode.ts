@@ -5,9 +5,8 @@ import type { createClient } from "./supabase/client";
 import type { Trip, TravelMode } from "./types";
 
 /**
- * The trip's travel mode with an optimistic setter. Only owners can update
- * trips (migration 006); for other members the choice still applies locally
- * but isn't saved.
+ * The trip's travel mode with an optimistic setter. Saved through
+ * set_travel_mode() because trip updates are owner-only (migration 006).
  */
 export function useTravelMode(trip: Trip, supabase: ReturnType<typeof createClient>) {
   const serverMode: TravelMode = trip.travel_mode ?? "walk";
@@ -22,8 +21,8 @@ export function useTravelMode(trip: Trip, supabase: ReturnType<typeof createClie
   async function changeMode(next: TravelMode) {
     if (next === mode) return;
     setMode(next);
-    // Errors and RLS-filtered updates (non-owners) leave the local choice in place.
-    await supabase.from("trips").update({ travel_mode: next }).eq("id", trip.id);
+    // On error the local choice stays; the next sync brings back the saved mode.
+    await supabase.rpc("set_travel_mode", { p_trip_id: trip.id, p_mode: next });
   }
 
   return [mode, changeMode] as const;

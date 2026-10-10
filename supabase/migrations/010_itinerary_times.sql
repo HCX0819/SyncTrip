@@ -32,3 +32,23 @@ alter table public.trips
   check (travel_mode in ('walk', 'drive'));
 
 grant update (travel_mode) on public.trips to authenticated;
+
+-- Trip updates are owner-only (006), but the travel mode is a shared view
+-- setting any member may change.
+create or replace function public.set_travel_mode(p_trip_id uuid, p_mode text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not public.is_trip_member(p_trip_id, auth.uid()) then
+    raise exception 'Not a member of this trip' using errcode = '42501';
+  end if;
+
+  update public.trips set travel_mode = p_mode where id = p_trip_id;
+end;
+$$;
+
+revoke execute on function public.set_travel_mode(uuid, text) from public, anon;
+grant execute on function public.set_travel_mode(uuid, text) to authenticated;
