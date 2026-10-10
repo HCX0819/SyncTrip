@@ -39,3 +39,54 @@ export function tripDayCount(
   // Round to absorb the 1-hour DST difference between local midnights.
   return Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
 }
+
+/**
+ * Compact range: "Jan 6 – 16, 2027", "Jan 30 – Feb 4, 2027",
+ * "Dec 28, 2026 – Jan 3, 2027". Falls back to whichever end is set.
+ */
+export function formatDateRange(
+  startDate: string | null | undefined,
+  endDate: string | null | undefined
+): string | null {
+  const start = parseDateOnly(startDate);
+  const end = parseDateOnly(endDate);
+  if (!start || !end) {
+    const only = start ?? end;
+    return only ? only.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
+  }
+
+  const month = (d: Date) => d.toLocaleDateString("en-US", { month: "short" });
+  if (start.getFullYear() !== end.getFullYear()) {
+    const full = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return `${full(start)} – ${full(end)}`;
+  }
+  if (start.getMonth() !== end.getMonth()) {
+    return `${month(start)} ${start.getDate()} – ${month(end)} ${end.getDate()}, ${end.getFullYear()}`;
+  }
+  if (start.getDate() === end.getDate()) {
+    return `${month(start)} ${start.getDate()}, ${start.getFullYear()}`;
+  }
+  return `${month(start)} ${start.getDate()} – ${end.getDate()}, ${end.getFullYear()}`;
+}
+
+export type TripStatus =
+  | { kind: "upcoming"; daysUntil: number }
+  | { kind: "ongoing"; day: number }
+  | { kind: "past" }
+  | { kind: "undated" };
+
+/** Where a trip sits relative to `today` (local calendar days). */
+export function tripStatus(
+  startDate: string | null | undefined,
+  endDate: string | null | undefined,
+  today: Date = new Date()
+): TripStatus {
+  const start = parseDateOnly(startDate);
+  if (!start) return { kind: "undated" };
+  const end = parseDateOnly(endDate) ?? start;
+  const midnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const daysUntil = Math.round((start.getTime() - midnight.getTime()) / 86_400_000);
+  if (daysUntil > 0) return { kind: "upcoming", daysUntil };
+  if (midnight.getTime() <= end.getTime()) return { kind: "ongoing", day: 1 - daysUntil };
+  return { kind: "past" };
+}

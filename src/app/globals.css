@@ -194,6 +194,12 @@ h1, h2, h3 {
   transform: translateY(-2px);
 }
 
+/* Tap feedback on touch, where :hover doesn't apply */
+.trip-card:active {
+  transform: scale(0.985);
+  box-shadow: var(--shadow-sm);
+}
+
 /* ── Bottom tab bar spacing ──────────────────────────────────── */
 .tab-content {
   padding-bottom: calc(var(--tab-height) + env(safe-area-inset-bottom, 0px));
