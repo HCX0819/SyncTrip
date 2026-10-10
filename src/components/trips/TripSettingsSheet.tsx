@@ -399,6 +399,35 @@ export default function TripSettingsSheet({ trip, members, currentUserId, onClos
           {membersError && <p style={errorStyle}>{membersError}</p>}
         </div>
 
+        {/* Print / export */}
+        <div style={{ marginBottom: "32px" }}>
+          <p style={sectionTitleStyle}>PRINT / EXPORT</p>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <a id="print-trip-link" href={`/trips/${trip.id}/print`} className="btn btn-ghost btn-sm">
+              🖨 Print itinerary
+            </a>
+            {trip.start_date ? (
+              <a
+                id="download-ics-link"
+                href={`/api/trips/${trip.id}/calendar`}
+                download
+                className="btn btn-ghost btn-sm"
+              >
+                📅 Download .ics
+              </a>
+            ) : (
+              <button type="button" className="btn btn-ghost btn-sm" disabled>
+                📅 Download .ics
+              </button>
+            )}
+          </div>
+          <p style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "8px" }}>
+            {trip.start_date
+              ? "Import the .ics file into Google, Apple or Outlook calendar."
+              : "Set trip dates to export the itinerary to a calendar."}
+          </p>
+        </div>
+
         {/* Leave / delete */}
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
           <button
