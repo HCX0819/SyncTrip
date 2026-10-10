@@ -15,12 +15,16 @@ interface Props {
   onVoteChanged: () => void;
 }
 
-const CATEGORIES: { value: Category | "all"; label: string }[] = [
+// "needed" filters by booking status rather than category.
+type Filter = Category | "all" | "needed";
+
+const CATEGORIES: { value: Filter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "stay", label: "🏨 Stay" },
   { value: "eat", label: "🍜 Eat" },
   { value: "do", label: "🎯 Do" },
   { value: "other", label: "⋯ Other" },
+  { value: "needed", label: "Needs booking" },
 ];
 
 export default function MoodboardView({
@@ -31,11 +35,16 @@ export default function MoodboardView({
   onPlaceAdded,
   onVoteChanged,
 }: Props) {
-  const [filter, setFilter] = useState<Category | "all">("all");
+  const [filter, setFilter] = useState<Filter>("all");
   const [showAdd, setShowAdd] = useState(false);
   const online = useOnlineStatus();
 
-  const filtered = filter === "all" ? places : places.filter((p) => p.category === filter);
+  const filtered =
+    filter === "all"
+      ? places
+      : filter === "needed"
+        ? places.filter((p) => p.booking_status === "needed")
+        : places.filter((p) => p.category === filter);
 
   return (
     <div
@@ -95,7 +104,9 @@ export default function MoodboardView({
           <p style={{ fontSize: "14px" }}>
             {filter === "all"
               ? "Add the first place to get started."
-              : `No ${filter} spots saved yet.`}
+              : filter === "needed"
+                ? "Nothing needs booking."
+                : `No ${filter} spots saved yet.`}
           </p>
         </div>
       ) : (

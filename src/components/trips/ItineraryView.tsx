@@ -54,6 +54,12 @@ const collisionDetection: CollisionDetection = (args) => {
 const bySortOrder = (a: ItineraryItem, b: ItineraryItem) =>
   a.sort_order - b.sort_order || a.id.localeCompare(b.id);
 
+// "⚠ Closed on Mondays" when the place's closed_days include the day's weekday.
+function closedWarning(place: SavedPlace, date: Date | null): string | null {
+  if (!date || !place.closed_days?.includes(date.getDay())) return null;
+  return `⚠ Closed on ${date.toLocaleDateString("en-US", { weekday: "long" })}s`;
+}
+
 export default function ItineraryView({ trip, places, onUpdate, syncTick }: Props) {
   const [items, setItems] = useState<ItineraryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,6 +133,7 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
     items.filter((i) => i.day_index === day && placeFor(i)).sort(bySortOrder);
 
   const currentDayItems = dayItems(currentDay);
+  const currentDayDate = tripDayDate(trip.start_date, currentDay);
   const unscheduledItems = items
     .filter((i) => (i.day_index < 1 || i.day_index > totalDays) && placeFor(i))
     .sort((a, b) => a.day_index - b.day_index || bySortOrder(a, b));
@@ -409,6 +416,7 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
                     item={item}
                     place={placeFor(item)!}
                     index={index}
+                    warning={closedWarning(placeFor(item)!, currentDayDate)}
                     currentDay={currentDay}
                     dayOptions={dayOptions}
                     disabled={isPending}
@@ -618,6 +626,7 @@ function SortableCard({
   item,
   place,
   index,
+  warning,
   currentDay,
   dayOptions,
   disabled,
@@ -627,6 +636,7 @@ function SortableCard({
   item: ItineraryItem;
   place: SavedPlace;
   index: number;
+  warning?: string | null;
   currentDay: number;
   dayOptions: { day: number; label: string }[];
   disabled: boolean;
@@ -667,6 +677,7 @@ function SortableCard({
       <CardBody
         place={place}
         badge={String(index + 1)}
+        warning={warning}
         currentDay={currentDay}
         dayOptions={dayOptions}
         disabled={disabled}
@@ -711,6 +722,7 @@ function DragHandle({
 function CardBody({
   place,
   badge,
+  warning,
   currentDay,
   dayOptions,
   disabled,
@@ -719,6 +731,7 @@ function CardBody({
 }: {
   place: SavedPlace;
   badge: string | null;
+  warning?: string | null;
   currentDay?: number | null;
   dayOptions?: { day: number; label: string }[];
   disabled?: boolean;
@@ -801,6 +814,9 @@ function CardBody({
           >
             📍 {place.address}
           </p>
+        )}
+        {warning && (
+          <p style={{ color: "var(--red)", fontSize: "12px", fontWeight: 500, marginTop: "2px" }}>{warning}</p>
         )}
       </div>
 
