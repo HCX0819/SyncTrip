@@ -7,7 +7,10 @@ import MoodboardView from "./MoodboardView";
 import MapView from "./MapView";
 import ItineraryView from "./ItineraryView";
 import TripSettingsSheet from "./TripSettingsSheet";
+import { useOnlineStatus } from "@/components/layout/OfflineBanner";
 import { createClient } from "@/lib/supabase/client";
+import { formatTripDate } from "@/lib/dates";
+import { useTripSync } from "@/lib/useTripSync";
 
 type Tab = "moodboard" | "map" | "itinerary";
 
@@ -61,12 +64,19 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
     if (data) setPlaces(data as SavedPlace[]);
   }
 
-  const startDate = trip.start_date
-    ? new Date(trip.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-    : null;
-  const endDate = trip.end_date
-    ? new Date(trip.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : null;
+  // Pick up other members' places, votes, trip edits and membership changes.
+  // Paused while a sheet is open so the form underneath isn't replaced.
+  const syncTick = useTripSync(
+    () => {
+      refreshPlaces();
+      router.refresh();
+    },
+    { paused: showInvite || showSettings }
+  );
+  const online = useOnlineStatus();
+
+  const startDate = formatTripDate(trip.start_date, { month: "short", day: "numeric" });
+  const endDate = formatTripDate(trip.end_date, { month: "short", day: "numeric", year: "numeric" });
 
   return (
     <div style={{ height: "100dvh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -128,6 +138,7 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
               id="invite-btn"
               className="btn btn-ghost btn-sm"
               onClick={() => setShowInvite(true)}
+              disabled={!online}
             >
               + Invite
             </button>
@@ -253,7 +264,7 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
           <MapView places={places} />
         )}
         {activeTab === "itinerary" && (
-          <ItineraryView trip={trip} places={places} onUpdate={refreshPlaces} />
+          <ItineraryView trip={trip} places={places} onUpdate={refreshPlaces} syncTick={syncTick} />
         )}
       </div>
 

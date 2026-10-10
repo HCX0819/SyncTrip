@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Trip, SavedPlace, Category } from "@/lib/types";
 import PlaceCard from "./PlaceCard";
 import AddPlaceModal from "./AddPlaceModal";
+import { useOnlineStatus } from "@/components/layout/OfflineBanner";
 
 interface Props {
   trip: Trip;
@@ -32,6 +33,7 @@ export default function MoodboardView({
 }: Props) {
   const [filter, setFilter] = useState<Category | "all">("all");
   const [showAdd, setShowAdd] = useState(false);
+  const online = useOnlineStatus();
 
   const filtered = filter === "all" ? places : places.filter((p) => p.category === filter);
 
@@ -126,6 +128,7 @@ export default function MoodboardView({
       <button
         id="add-place-fab"
         onClick={() => setShowAdd(true)}
+        disabled={!online}
         style={{
           position: "fixed",
           bottom: "calc(var(--tab-height) + 20px + env(safe-area-inset-bottom, 0px))",
@@ -140,13 +143,14 @@ export default function MoodboardView({
           justifyContent: "center",
           fontSize: "24px",
           border: "none",
-          cursor: "pointer",
+          cursor: online ? "pointer" : "not-allowed",
+          opacity: online ? 1 : 0.5,
           boxShadow: "0 4px 20px rgba(201,168,76,0.35)",
           transition: "transform 0.2s var(--ease-out)",
           zIndex: 30,
           fontWeight: 300,
         }}
-        title="Add a place"
+        title={online ? "Add a place" : "You're offline"}
       >
         +
       </button>
