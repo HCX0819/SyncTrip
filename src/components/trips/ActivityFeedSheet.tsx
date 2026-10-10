@@ -42,6 +42,10 @@ function describe(a: TripActivity, count: number): string {
       return "left the trip";
     case "member_removed":
       return `removed ${p.name ?? "a member"} from the trip`;
+    case "comment_added":
+      return typeof p.body === "string" && p.body
+        ? `commented on ${title}: “${p.body}${p.body.length >= 80 ? "…" : ""}”`
+        : `commented on ${title}`;
     default:
       return "made a change";
   }
@@ -66,7 +70,7 @@ function groupRows(activities: TripActivity[]): Row[] {
   return rows;
 }
 
-function timeAgo(iso: string): string {
+export function timeAgo(iso: string): string {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;

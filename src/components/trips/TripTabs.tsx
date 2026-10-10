@@ -61,7 +61,7 @@ export default function TripTabs({ trip, members, places: initialPlaces, current
   async function refreshPlaces() {
     const { data } = await supabase
       .from("saved_places")
-      .select("*, votes(*)")
+      .select("*, votes(*), place_comments(count)")
       .eq("trip_id", trip.id)
       .order("created_at", { ascending: false });
     if (data) setPlaces(data as SavedPlace[]);

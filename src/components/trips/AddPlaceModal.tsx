@@ -6,6 +6,7 @@ import type { Category } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { isGeocodableQuery } from "@/lib/geocode";
 import { uploadTripPhoto } from "@/lib/uploadPhoto";
+import BookingFields, { bookingColumns, type BookingValue } from "./BookingFields";
 
 interface Props {
   tripId: string;
@@ -37,6 +38,11 @@ export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
     latitude: null as number | null,
     longitude: null as number | null,
     photo_url: "",
+  });
+  const [booking, setBooking] = useState<BookingValue>({
+    booking_status: "none",
+    booking_ref: "",
+    closed_days: [],
   });
 
   const supabase = createClient();
@@ -132,6 +138,7 @@ export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
         address: form.address || null,
         latitude: form.latitude,
         longitude: form.longitude,
+        ...bookingColumns(booking),
       });
 
       if (error) {
@@ -368,6 +375,12 @@ export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
               style={{ resize: "vertical" }}
             />
           </div>
+
+          <BookingFields
+            idPrefix=""
+            value={booking}
+            onChange={(patch) => setBooking((prev) => ({ ...prev, ...patch }))}
+          />
 
           {error && (
             <p style={{ color: "var(--red)", fontSize: "13px" }}>{error}</p>

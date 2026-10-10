@@ -1,6 +1,7 @@
 export type Category = "stay" | "eat" | "do" | "other";
 export type VoteValue = "yaay" | "naay";
 export type MemberRole = "owner" | "member";
+export type BookingStatus = "none" | "needed" | "booked";
 
 export interface Trip {
   id: string;
@@ -43,8 +44,24 @@ export interface SavedPlace {
   longitude: number | null;
   address: string | null;
   created_at: string;
+  booking_status?: BookingStatus;
+  booking_ref?: string | null;
+  /** Weekdays the place is closed, 0 = Sunday .. 6 = Saturday. */
+  closed_days?: number[] | null;
   votes?: Vote[];
   added_by_profile?: Profile;
+  /** From the `place_comments(count)` embed. */
+  place_comments?: { count: number }[];
+}
+
+export interface PlaceComment {
+  id: string;
+  place_id: string;
+  trip_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+  author?: Pick<Profile, "id" | "display_name" | "avatar_url"> | null;
 }
 
 export interface Vote {
@@ -72,7 +89,8 @@ export type ActivityKind =
   | "itinerary_reordered"
   | "member_joined"
   | "member_left"
-  | "member_removed";
+  | "member_removed"
+  | "comment_added";
 
 export interface TripActivity {
   id: string;
