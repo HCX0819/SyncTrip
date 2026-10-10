@@ -449,39 +449,22 @@ h1, h2, h3 {
   gap: 12px;
 }
 
-/* ── Maplibre / Mapbox overrides — Google Maps UI feel ──────── */
+/* ── Maplibre overrides — Google Maps UI feel ───────────────── */
 .maplibregl-ctrl-logo,
-.mapboxgl-ctrl-logo,
-.maplibregl-ctrl-attrib,
-.mapboxgl-ctrl-attrib {
+.maplibregl-ctrl-attrib {
   opacity: 0.5 !important;
 }
 
-.maplibregl-ctrl-group,
-.mapboxgl-ctrl-group {
+.maplibregl-ctrl-group {
   border-radius: var(--radius-md) !important;
   box-shadow: var(--shadow-float) !important;
   border: 1px solid var(--border) !important;
   overflow: hidden;
 }
 
-.maplibregl-ctrl-group button,
-.mapboxgl-ctrl-group button {
+.maplibregl-ctrl-group button {
   width: 40px !important;
   height: 40px !important;
-}
-
-.mapboxgl-popup-content {
-  background: var(--surface) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--radius-lg) !important;
-  padding: 0 !important;
-  box-shadow: var(--shadow-float) !important;
-  color: var(--text) !important;
-}
-
-.mapboxgl-popup-tip {
-  border-top-color: var(--surface) !important;
 }
 
 /* ── Google Maps chip/pill ──────────────────────────────────── */
