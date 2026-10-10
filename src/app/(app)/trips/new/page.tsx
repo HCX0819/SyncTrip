@@ -4,6 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+// "kyoto" → "Kyoto"; leaves the rest as typed ("iPhone tour", "NYC").
+function capitalizeFirst(value: string) {
+  const s = value.trim();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 export default function NewTripPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -38,8 +44,8 @@ export default function NewTripPage() {
       const { data: trip, error: tripErr } = await supabase
         .from("trips")
         .insert({
-          name: form.name,
-          destination: form.destination,
+          name: capitalizeFirst(form.name),
+          destination: capitalizeFirst(form.destination),
           start_date: form.start_date || null,
           end_date: form.end_date || null,
           created_by: user.id,

@@ -21,12 +21,7 @@ const CATEGORIES: { value: Category; label: string }[] = [
 ];
 
 export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
-  const [mounted, setMounted] = useState(false);
   const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
   const [error, setError] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [geocoding, setGeocoding] = useState(false);
@@ -148,8 +143,7 @@ export default function AddPlaceModal({ tripId, onClose, onSaved }: Props) {
     });
   }
 
-  if (!mounted) return null;
-
+  // Only rendered after a click (never during SSR), so document is available.
   return createPortal(
     <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 9999 }}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>

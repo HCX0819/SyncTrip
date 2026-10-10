@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   Map,
@@ -337,7 +338,15 @@ export default function LoginPage() {
                 lineHeight: 1.5,
               }}
             >
-              By signing in, you agree to our Terms of Service and Privacy Policy.
+              By signing in, you agree to our{" "}
+              <Link href="/terms" style={{ color: "var(--text-muted)", textDecoration: "underline" }}>
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" style={{ color: "var(--text-muted)", textDecoration: "underline" }}>
+                Privacy Policy
+              </Link>
+              .
             </p>
           </>
         ) : (

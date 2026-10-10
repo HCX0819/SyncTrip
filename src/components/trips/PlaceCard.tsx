@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import type { SavedPlace, VoteValue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import EditPlaceModal from "./EditPlaceModal";
+import { useOnlineStatus } from "@/components/layout/OfflineBanner";
 
 interface Props {
   place: SavedPlace;
@@ -27,6 +28,7 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
   const isFavorite = memberCount > 0 && yaayCount > memberCount / 2;
   const [optimisticVote, setOptimisticVote] = useState<VoteValue | undefined>(myVote);
   const [showEdit, setShowEdit] = useState(false);
+  const online = useOnlineStatus();
   const [isPending, startTransition] = useTransition();
   const supabase = createClient();
 
@@ -225,7 +227,7 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
               id={`vote-yaay-${place.id}`}
               className={`vote-btn yaay ${optimisticVote === "yaay" ? "active" : ""}`}
               onClick={() => handleVote("yaay")}
-              disabled={isPending}
+              disabled={isPending || !online}
             >
               ✦ Yaay <span style={{ fontWeight: 600 }}>{displayYaay}</span>
             </button>
@@ -233,7 +235,7 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
               id={`vote-naay-${place.id}`}
               className={`vote-btn naay ${optimisticVote === "naay" ? "active" : ""}`}
               onClick={() => handleVote("naay")}
-              disabled={isPending}
+              disabled={isPending || !online}
             >
               ✕ Naay <span style={{ fontWeight: 600 }}>{displayNaay}</span>
             </button>
