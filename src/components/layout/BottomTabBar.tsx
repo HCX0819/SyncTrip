@@ -16,17 +16,6 @@ const tabs = [
     ),
   },
   {
-    id: "tab-explore",
-    href: "/dashboard",
-    label: "Explore",
-    icon: (active: boolean) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2 : 1.5}>
-        <circle cx="11" cy="11" r="8" strokeLinecap="round" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
     id: "tab-profile",
     href: "/profile",
     label: "Profile",
@@ -56,7 +45,7 @@ export default function BottomTabBar() {
         boxShadow: "0 -4px 18px rgba(76, 51, 35, 0.1)",
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-around",
+        justifyContent: "space-evenly",
         paddingBottom: "env(safe-area-inset-bottom, 0px)",
         zIndex: 40,
       }}
@@ -75,6 +64,7 @@ export default function BottomTabBar() {
               gap: "3px",
               color: active ? "var(--blue)" : "var(--text-muted)",
               textDecoration: "none",
+              minWidth: "96px",
               padding: "6px 24px",
               borderRadius: "var(--radius-lg)",
               transition: "color 0.2s, background 0.2s",

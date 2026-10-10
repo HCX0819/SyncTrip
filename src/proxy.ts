@@ -32,7 +32,7 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes — allow unauthenticated
-  const publicRoutes = ["/login", "/auth/callback", "/join"];
+  const publicRoutes = ["/login", "/auth/callback", "/join", "/privacy", "/terms"];
   const isPublic =
     publicRoutes.some((r) => pathname.startsWith(r)) ||
     pathname.startsWith("/_next") ||
