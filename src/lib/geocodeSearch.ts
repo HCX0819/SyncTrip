@@ -72,6 +72,31 @@ function localScriptVariant(q: string, bias: Bias | null) {
   return variant !== q ? variant : null;
 }
 
+function median(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+async function countryAt(lon: number, lat: number, token: string) {
+  const res = await fetch(
+    `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${lon}&latitude=${lat}&limit=1&access_token=${token}`
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { features?: GeocodeV6Feature[] };
+  return data.features?.[0]?.properties.context?.country?.country_code?.toLowerCase() ?? null;
+}
+
+async function biasFromDestination(destination: string, token: string): Promise<Bias | null> {
+  const res = await fetch(
+    `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(destination)}&access_token=${token}&limit=1&types=place,region,country,locality,district&language=en`
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { features?: GeocodeV6Feature[] };
+  const f = data.features?.[0];
+  const country = f?.properties.context?.country?.country_code?.toLowerCase();
+  return f && country ? { country, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] } : null;
+}
+
 export async function resolveBias(tripId: string, token: string): Promise<Bias | null> {
   const cached = biasCache.get(tripId);
   if (cached && cached.expires > Date.now()) return cached.bias;
@@ -79,24 +104,29 @@ export async function resolveBias(tripId: string, token: string): Promise<Bias |
   let bias: Bias | null = null;
   try {
     const supabase = await createClient();
-    const { data: trip } = await supabase
-      .from("trips")
-      .select("destination")
-      .eq("id", tripId)
-      .single();
-    const destination = trip?.destination?.trim();
-    if (destination) {
-      const res = await fetch(
-        `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(destination)}&access_token=${token}&limit=1&types=place,region,country,locality,district&language=en`
-      );
-      if (res.ok) {
-        const data = (await res.json()) as { features?: GeocodeV6Feature[] };
-        const f = data.features?.[0];
-        const country = f?.properties.context?.country?.country_code?.toLowerCase();
-        if (f && country) {
-          bias = { country, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] };
-        }
-      }
+    // Places already saved say where the trip is more reliably than free-text destinations
+    // like "Kansai", which Mapbox resolves to a town in India.
+    const { data: places } = await supabase
+      .from("saved_places")
+      .select("latitude, longitude")
+      .eq("trip_id", tripId)
+      .not("latitude", "is", null)
+      .not("longitude", "is", null)
+      .limit(200);
+    if (places && places.length > 0) {
+      const lon = median(places.map((p) => Number(p.longitude)));
+      const lat = median(places.map((p) => Number(p.latitude)));
+      const country = await countryAt(lon, lat, token);
+      if (country) bias = { country, lon, lat };
+    }
+    if (!bias) {
+      const { data: trip } = await supabase
+        .from("trips")
+        .select("destination")
+        .eq("id", tripId)
+        .single();
+      const destination = trip?.destination?.trim();
+      if (destination) bias = await biasFromDestination(destination, token);
     }
   } catch {
     bias = null;
@@ -210,4 +240,46 @@ export async function searchPlaces(q: string, token: string | null, bias: Bias |
     .sort((a, b) => b.s - a.s || a.i - b.i)
     .slice(0, 6)
     .map(({ f }) => f);
+}
+
+// Generic words no map stores in a name ("Fushimi Sake District" is only findable as "Fushimi Sake").
+const GENERIC_WORDS = /\b(district|area|quarter|neighbou?rhood|old town|town|zone|street)\b/gi;
+
+function keyWords(q: string) {
+  return q
+    .replace(GENERIC_WORDS, " ")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length >= 3);
+}
+
+// A worldwide search fuzzy-matches anything ("Alice F. Keene District Park"), so keep only
+// results that contain one of the query's real words.
+function sharesKeyWord(f: GeocodeFeature, q: string) {
+  if (/[぀-ヿ㐀-䶿一-鿿]/.test(q)) return true;
+  const words = keyWords(q);
+  const haystack = `${f.text} ${f.place_name}`.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  return words.length === 0 || words.some((w) => haystack.includes(w));
+}
+
+export async function searchPlacesWithFallbacks(q: string, token: string | null, bias: Bias | null) {
+  // Near the trip every result is plausible; worldwide, keep only real matches.
+  const search = async (query: string, near: Bias | null) => {
+    const results = await searchPlaces(query, token, near);
+    return near ? results : results.filter((f) => sharesKeyWord(f, q));
+  };
+
+  let results = await search(q, bias);
+  if (results.length > 0) return results;
+
+  const stripped = q.replace(GENERIC_WORDS, " ").replace(/\s+/g, " ").trim();
+  if (stripped !== q && stripped.length >= 3) {
+    results = await search(stripped, bias);
+    if (results.length > 0) return results;
+  }
+
+  // A vague destination can resolve to the wrong country; don't let it hide everything.
+  return bias ? search(q, null) : results;
 }

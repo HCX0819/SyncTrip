@@ -5,8 +5,7 @@ import { createRateLimiter, TtlCache } from "@/lib/rateLimit";
 import {
   getToken,
   resolveBias,
-  searchPlaces,
-  type Bias,
+  searchPlacesWithFallbacks,
   type GeocodeFeature,
 } from "@/lib/geocodeSearch";
 
@@ -28,7 +27,6 @@ export async function GET(request: NextRequest) {
   if (isRateLimited(user.id)) return Response.json([], { status: 429 });
 
   const token = getToken();
-  const search = (bias: Bias | null) => searchPlaces(q, token, bias);
 
   try {
     const bias = tripId && token ? await resolveBias(tripId, token) : null;
@@ -37,9 +35,7 @@ export async function GET(request: NextRequest) {
     const cached = resultCache.get(cacheKey);
     if (cached) return Response.json(cached);
 
-    let results = await search(bias);
-    // A vague destination can resolve to the wrong country; don't let it hide everything.
-    if (results.length === 0 && bias) results = await search(null);
+    const results = await searchPlacesWithFallbacks(q, token, bias);
     if (results.length > 0) resultCache.set(cacheKey, results);
     return Response.json(results);
   } catch {
