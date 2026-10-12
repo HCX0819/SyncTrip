@@ -1,6 +1,7 @@
 // Server-only: reads MAPBOX_TOKEN and uses the server Supabase client.
 // Shared by /api/geocode and /api/unfurl.
 import { Converter } from "opencc-js/cn2t";
+import { getGooglePlacesKey } from "@/lib/placePhotos";
 import { createClient } from "@/lib/supabase/server";
 
 export interface GeocodeFeature {
@@ -181,6 +182,44 @@ export async function searchNominatim(q: string, bias: Bias | null): Promise<Geo
   }));
 }
 
+interface GooglePlace {
+  id: string;
+  displayName?: { text: string };
+  formattedAddress?: string;
+  location?: { latitude: number; longitude: number };
+}
+
+// Google knows landmarks by their English and Chinese names ("Fushimi Sake District")
+// where Mapbox and OpenStreetMap only have the local name. Paid, so only with a key.
+export async function searchGoogle(q: string, key: string, bias: Bias | null): Promise<GeocodeFeature[]> {
+  const body: Record<string, unknown> = { textQuery: q, pageSize: 5, languageCode: languagesFor(q).split(",")[0] };
+  if (bias) {
+    body.locationBias = { circle: { center: { latitude: bias.lat, longitude: bias.lon }, radius: 50000 } };
+  }
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": key,
+      "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(4000),
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { places?: GooglePlace[] };
+  return (data.places ?? []).flatMap((p) =>
+    p.location && p.displayName
+      ? [{
+          id: `google:${p.id}`,
+          place_name: p.formattedAddress ? `${p.displayName.text}, ${p.formattedAddress}` : p.displayName.text,
+          text: p.displayName.text,
+          geometry: { coordinates: [p.location.longitude, p.location.latitude] as [number, number] },
+        }]
+      : []
+  );
+}
+
 // Nominatim's usage policy allows at most one request per second from the whole app.
 // Wait briefly for a slot rather than skip, since results get cached for a day.
 let nextNominatimSlot = 0;
@@ -208,7 +247,9 @@ function distanceKm([lon1, lat1]: [number, number], [lon2, lat2]: [number, numbe
 export async function searchPlaces(q: string, token: string | null, bias: Bias | null) {
   const variant = localScriptVariant(q, bias);
   const queries = variant ? [q, variant] : [q];
+  const googleKey = getGooglePlacesKey();
   const batches = await Promise.all([
+    ...(googleKey ? [searchGoogle(q, googleKey, bias).catch(() => [])] : []),
     ...(token ? queries.map((query) => searchMapbox(query, token, bias).catch(() => [])) : []),
     searchNominatimThrottled(q, bias).catch(() => []),
   ]);
@@ -235,8 +276,12 @@ export async function searchPlaces(q: string, token: string | null, bias: Bias |
       if (f && !duplicate) merged.push(f);
     }
   }
-  return merged
-    .map((f, i) => ({ f, i, s: score(f) }))
+  const scored = merged.map((f, i) => ({ f, i, s: score(f) }));
+  // Once something matches, drop results that are neither named like the query nor
+  // near the trip (伏見 neighbourhoods across Japan for "Fushimi Sake").
+  const anyRelevant = scored.some(({ s }) => s > 0);
+  return scored
+    .filter(({ s }) => !anyRelevant || s > 0)
     .sort((a, b) => b.s - a.s || a.i - b.i)
     .slice(0, 6)
     .map(({ f }) => f);
