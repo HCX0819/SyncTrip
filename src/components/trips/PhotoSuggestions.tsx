@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PhotoCandidate } from "@/app/api/place-photo/route";
+import PhotoPreview from "./PhotoPreview";
 
 interface Props {
   name: string;
@@ -28,6 +29,7 @@ export default function PhotoSuggestions({
   startCollapsed,
 }: Props) {
   const [expanded, setExpanded] = useState(!startCollapsed);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   // Results are tagged with the lookup they answer, so a stale strip stays
   // visible (marked "updating") while the next lookup runs.
   const [result, setResult] = useState<{ key: string; data: PhotoCandidate[] } | null>(null);
@@ -93,22 +95,18 @@ export default function PhotoSuggestions({
   return (
     <div>
       <p style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px" }}>
-        Suggested photos {loading && <span style={{ color: "var(--accent)" }}>· updating…</span>}
+        Suggested photos · tap to preview {loading && <span style={{ color: "var(--accent)" }}>· updating…</span>}
       </p>
       <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "4px" }}>
-        {candidates.map((c) => {
+        {candidates.map((c, i) => {
           const isSelected = c.url === selectedUrl;
           return (
             <button
               key={c.url}
               type="button"
               title={c.credit}
-              aria-label={`Use photo: ${c.credit}`}
-              aria-pressed={isSelected}
-              onClick={() => {
-                lastAutoPick.current = null; // the user chose; stop replacing it
-                onSelect(isSelected ? "" : c.url);
-              }}
+              aria-label={`Preview photo: ${c.credit}${isSelected ? " (current photo)" : ""}`}
+              onClick={() => setPreviewIndex(i)}
               style={{
                 width: 72,
                 height: 56,
@@ -137,6 +135,19 @@ export default function PhotoSuggestions({
             selected.credit
           )}
         </p>
+      )}
+      {previewIndex !== null && (
+        <PhotoPreview
+          candidates={candidates}
+          index={Math.min(previewIndex, candidates.length - 1)}
+          selectedUrl={selectedUrl}
+          onIndexChange={setPreviewIndex}
+          onUse={(url) => {
+            lastAutoPick.current = null; // the user chose; stop replacing it
+            onSelect(url);
+          }}
+          onClose={() => setPreviewIndex(null)}
+        />
       )}
     </div>
   );
