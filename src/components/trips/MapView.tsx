@@ -4,13 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { GeoJSONSource, Map as MapLibreMap, Marker } from "maplibre-gl";
 import type { Category, ItineraryItem, SavedPlace, Trip, VoteValue } from "@/lib/types";
 import { useOnlineStatus } from "@/components/layout/OfflineBanner";
-import { addPlaceToDay, bySortOrder, planMoveToDay, saveDayOrder, tripTotalDays } from "@/lib/itinerary";
+import { addPlaceToDay, bySortOrder, dayLabel, planMoveToDay, saveDayOrder, tripTotalDays } from "@/lib/itinerary";
 import { useItineraryItems } from "@/lib/useItineraryItems";
+import { formatTimeOfDay } from "@/lib/travel";
 import { setVote } from "@/lib/votes";
 import AddPlaceModal from "./AddPlaceModal";
 import PlaceCommentsSheet from "./PlaceCommentsSheet";
+import CategoryChips from "./map/CategoryChips";
 import DayStrip, { type DayFilter } from "./map/DayStrip";
 import PlaceActionCard from "./map/PlaceActionCard";
+import PlaceListPanel, { SHEET_PEEK_PX, type ListRow, type SheetSnap } from "./map/PlaceListPanel";
+import { useMediaQuery } from "./map/useMediaQuery";
 import { CATEGORY_STYLE, MAP_STYLES, ROUTE_COLOR, loadMapTheme, saveMapTheme, type MapTheme } from "./map/mapStyles";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -36,6 +40,16 @@ interface MarkerSpec {
   label?: number;
   /** Saved but not on any day. */
   faded?: boolean;
+}
+
+/** A place (All) or itinerary stop (a day) in the current view. */
+interface Entry {
+  key: string;
+  place: SavedPlace;
+  item?: ItineraryItem;
+  number?: number;
+  faded?: boolean;
+  subtitle: string;
 }
 
 interface MarkerEntry {
@@ -102,10 +116,11 @@ function createMarkerElement(): { el: HTMLDivElement; badge: HTMLDivElement } {
   return { el, badge };
 }
 
-function paintMarker({ el, badge }: MarkerEntry, spec: MarkerSpec, selected: boolean) {
+function paintMarker({ el, badge }: MarkerEntry, spec: MarkerSpec, selected: boolean, pulsing: boolean) {
   const style = CATEGORY_STYLE[spec.category] ?? CATEGORY_STYLE.other;
   el.dataset.placeId = spec.placeId;
   el.classList.toggle("is-selected", selected);
+  el.classList.toggle("is-pulsing", pulsing);
   el.classList.toggle("is-faded", !!spec.faded);
   el.setAttribute("role", "button");
   el.setAttribute("aria-label", spec.label ? `Stop ${spec.label}` : style.label);
@@ -129,7 +144,13 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [hiddenCategories, setHiddenCategories] = useState<Set<Category>>(() => new Set());
+  const [sheetSnap, setSheetSnap] = useState<SheetSnap>("peek");
+  // Pin that briefly pulses after it's picked from the list.
+  const [pulseId, setPulseId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const online = useOnlineStatus();
+  const desktop = useMediaQuery("(min-width: 900px)");
 
   const { items, setItems, supabase } = useItineraryItems(trip.id, syncTick);
   const totalDays = tripTotalDays(trip);
@@ -162,22 +183,80 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
     return byPlace;
   }, [stopsByDay]);
 
-  const specs = useMemo((): MarkerSpec[] => {
+  // Everything the current day view could show, before category filters.
+  const entries = useMemo((): Entry[] => {
     if (day === "all") {
-      return places.filter(hasCoords).map((p) => ({
-        key: `p:${p.id}`,
-        placeId: p.id,
-        lngLat: lngLatOf(p),
-        category: p.category,
-        faded: !itemsByPlace.has(p.id),
-      }));
+      const scheduled = (p: SavedPlace) => itemsByPlace.get(p.id)?.[0];
+      return [...places]
+        .sort((a, b) => {
+          const ia = scheduled(a);
+          const ib = scheduled(b);
+          if (ia && ib) return ia.day_index - ib.day_index || (stopNumbers.get(ia.id) ?? 0) - (stopNumbers.get(ib.id) ?? 0);
+          if (ia || ib) return ia ? -1 : 1;
+          return a.title.localeCompare(b.title);
+        })
+        .map((p) => {
+          const slots = itemsByPlace.get(p.id) ?? [];
+          return {
+            key: `p:${p.id}`,
+            place: p,
+            faded: slots.length === 0,
+            subtitle:
+              slots.length === 0
+                ? "Not planned yet"
+                : slots.map((i) => `Day ${i.day_index} · stop ${stopNumbers.get(i.id)}`).join(", "),
+          };
+        });
     }
-    return (stopsByDay.get(day) ?? []).flatMap((item) => {
-      const p = placeById.get(item.place_id);
-      if (!p || !hasCoords(p)) return [];
-      return [{ key: `i:${item.id}`, placeId: p.id, lngLat: lngLatOf(p), category: p.category, label: stopNumbers.get(item.id) }];
+    return (stopsByDay.get(day) ?? []).map((item) => {
+      const p = placeById.get(item.place_id)!;
+      const time = formatTimeOfDay(item.start_time);
+      const label = CATEGORY_STYLE[p.category]?.label ?? "Other";
+      return { key: `i:${item.id}`, place: p, item, number: stopNumbers.get(item.id), subtitle: time ? `${time} · ${label}` : label };
     });
   }, [day, places, placeById, itemsByPlace, stopsByDay, stopNumbers]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<Category, number> = { stay: 0, eat: 0, do: 0, other: 0 };
+    entries.forEach((e) => (counts[e.place.category] = (counts[e.place.category] ?? 0) + 1));
+    return counts;
+  }, [entries]);
+
+  const visibleEntries = useMemo(
+    () => entries.filter((e) => !hiddenCategories.has(e.place.category)),
+    [entries, hiddenCategories]
+  );
+
+  const specs = useMemo(
+    (): MarkerSpec[] =>
+      visibleEntries
+        .filter((e) => hasCoords(e.place))
+        .map((e) => ({
+          key: e.key,
+          placeId: e.place.id,
+          lngLat: lngLatOf(e.place),
+          category: e.place.category,
+          label: e.number,
+          faded: e.faded,
+        })),
+    [visibleEntries]
+  );
+
+  const rows = useMemo(
+    (): ListRow[] =>
+      visibleEntries.map((e) => ({
+        key: e.key,
+        placeId: e.place.id,
+        title: e.place.title,
+        category: e.place.category,
+        number: e.number,
+        subtitle: e.subtitle,
+        hasLocation: hasCoords(e.place),
+        faded: e.faded,
+        yaay: e.place.votes?.filter((v) => v.value === "yaay").length ?? 0,
+      })),
+    [visibleEntries]
+  );
 
   const route = useMemo(() => routeGeoJSON(day === "all" ? [] : specs.map((s) => s.lngLat)), [day, specs]);
   const routeRef = useRef(route);
@@ -208,6 +287,12 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
           attributionControl: { compact: true },
         });
         map.addControl(new lib.NavigationControl({ showCompass: false }), "top-right");
+        const geolocate = new lib.GeolocateControl({
+          positionOptions: { enableHighAccuracy: true },
+          trackUserLocation: true,
+        });
+        geolocate.on("error", () => setToast("Couldn't get your location. Check location permission."));
+        map.addControl(geolocate, "top-right");
         map.on("style.load", () => {
           styleReadyRef.current = true;
           syncRoute(map, routeRef.current);
@@ -267,7 +352,10 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
         el.addEventListener("click", (e) => {
           e.stopPropagation();
           const placeId = el.dataset.placeId;
-          if (placeId) setSelectedId(placeId);
+          if (!placeId) return;
+          setSelectedId(placeId);
+          setActionError(null);
+          setSheetSnap("peek");
         });
         const marker = new lib.Marker({ element: el }).setLngLat(spec.lngLat).addTo(map);
         entry = { marker, el, badge };
@@ -275,9 +363,21 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
       } else {
         entry.marker.setLngLat(spec.lngLat);
       }
-      paintMarker(entry, spec, spec.placeId === selectedId);
+      paintMarker(entry, spec, spec.placeId === selectedId, spec.placeId === pulseId);
     }
-  }, [ready, specs, selectedId]);
+  }, [ready, specs, selectedId, pulseId]);
+
+  useEffect(() => {
+    if (!pulseId) return;
+    const timer = setTimeout(() => setPulseId(null), 1600);
+    return () => clearTimeout(timer);
+  }, [pulseId]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   // Frame the pins on first load and whenever the day changes, not on every refresh.
   const framedRef = useRef<string | null>(null);
@@ -303,6 +403,32 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
   function selectPlace(id: string | null) {
     setSelectedId(id);
     setActionError(null);
+  }
+
+  // List row tapped: fly to the pin, pulse it and open its card.
+  function selectRow(row: ListRow) {
+    selectPlace(row.placeId);
+    if (!desktop) setSheetSnap("peek");
+    const place = placeById.get(row.placeId);
+    const map = mapRef.current;
+    if (!place || !hasCoords(place) || !map) return;
+    setPulseId(row.placeId);
+    map.flyTo({
+      center: lngLatOf(place),
+      zoom: Math.max(map.getZoom(), 15),
+      // Keep the pin above the place card.
+      offset: [0, desktop ? -80 : -130],
+      duration: 800,
+    });
+  }
+
+  function toggleCategory(category: Category) {
+    setHiddenCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
   }
 
   async function handleVote(value: VoteValue | undefined) {
@@ -340,14 +466,20 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
   const banner =
     placesWithCoords.length === 0
       ? { text: "No places pinned on this trip yet.", add: true }
-      : day !== "all" && specs.length === 0
+      : day !== "all" && entries.length === 0
         ? { text: `Nothing on Day ${day} yet. Tap a pin in All and choose “Add to day”.`, add: false }
         : null;
+
+  const dayTitle = day === "all" ? "All places" : dayLabel(trip.start_date, day);
+  // The card sits above the bottom tab bar, and above the collapsed sheet on phones.
+  const cardBottom = desktop
+    ? "calc(var(--tab-height) + 16px)"
+    : `calc(var(--tab-height) + ${SHEET_PEEK_PX + 12}px)`;
 
   return (
     <div
       style={{
-        position: "relative",
+        display: "flex",
         width: "100%",
         flex: 1, // grow to fill parent flex column
         minHeight: 0, // allow flex shrink
@@ -355,126 +487,184 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
         overflow: "hidden", // prevent map canvas from bleeding out
       }}
     >
-      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
+      <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+        <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 
-      {/* Top overlay: theme toggle + day strip */}
-      <div
-        style={{
-          position: "absolute",
-          top: "12px",
-          left: "12px",
-          right: "56px",
-          zIndex: 10,
-          display: "flex",
-          flexDirection: "column",
-          gap: "8px",
-          pointerEvents: "none",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", pointerEvents: "auto", minWidth: 0 }}>
-          <div
-            role="group"
-            aria-label="Map style"
-            style={{
-              display: "flex",
-              flexShrink: 0,
-              gap: "2px",
-              background: "rgba(255,253,249,0.94)",
-              backdropFilter: "blur(8px)",
-              padding: "3px",
-              borderRadius: "99px",
-              boxShadow: "var(--shadow-sm)",
-              border: "1px solid var(--noir-border-strong)",
-            }}
-          >
-            {(
-              [
-                { id: "light", label: "☀️", title: "Light map" },
-                { id: "dark", label: "🌙", title: "Dark map" },
-              ] as { id: MapTheme; label: string; title: string }[]
-            ).map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setTheme(opt.id)}
-                aria-pressed={theme === opt.id}
-                aria-label={opt.title}
-                title={opt.title}
-                style={{
-                  width: 30,
-                  height: 26,
-                  borderRadius: "99px",
-                  border: "none",
-                  fontSize: "13px",
-                  cursor: "pointer",
-                  background: theme === opt.id ? "var(--gold)" : "transparent",
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <DayStrip
-              startDate={trip.start_date}
-              totalDays={totalDays}
-              value={day}
-              onChange={(value) => {
-                setDayFilter(value);
-                setActionError(null);
+        {/* Top overlay: theme toggle + day strip, category chips, banner */}
+        <div
+          style={{
+            position: "absolute",
+            top: "12px",
+            left: "12px",
+            right: "60px",
+            zIndex: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            pointerEvents: "none",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", pointerEvents: "auto", minWidth: 0 }}>
+            <div
+              role="group"
+              aria-label="Map style"
+              style={{
+                display: "flex",
+                flexShrink: 0,
+                gap: "2px",
+                background: "rgba(255,253,249,0.94)",
+                backdropFilter: "blur(8px)",
+                padding: "3px",
+                borderRadius: "99px",
+                boxShadow: "var(--shadow-sm)",
+                border: "1px solid var(--noir-border-strong)",
               }}
-            />
+            >
+              {(
+                [
+                  { id: "light", label: "☀️", title: "Light map" },
+                  { id: "dark", label: "🌙", title: "Dark map" },
+                ] as { id: MapTheme; label: string; title: string }[]
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setTheme(opt.id)}
+                  aria-pressed={theme === opt.id}
+                  aria-label={opt.title}
+                  title={opt.title}
+                  style={{
+                    width: 30,
+                    height: 26,
+                    borderRadius: "99px",
+                    border: "none",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    background: theme === opt.id ? "var(--gold)" : "transparent",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <DayStrip
+                startDate={trip.start_date}
+                totalDays={totalDays}
+                value={day}
+                onChange={(value) => {
+                  setDayFilter(value);
+                  setActionError(null);
+                  // Close the card when its place isn't on the chosen day.
+                  if (value !== "all" && !(stopsByDay.get(value) ?? []).some((i) => i.place_id === selectedId)) {
+                    setSelectedId(null);
+                  }
+                }}
+              />
+            </div>
           </div>
+
+          <div style={{ pointerEvents: "auto", minWidth: 0, alignSelf: "flex-start", maxWidth: "100%" }}>
+            <CategoryChips counts={categoryCounts} hidden={hiddenCategories} onToggle={toggleCategory} />
+          </div>
+
+          {banner && (
+            <div
+              style={{
+                alignSelf: "center",
+                pointerEvents: "auto",
+                background: "rgba(255,253,249,0.94)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid var(--noir-border-strong)",
+                borderRadius: "99px",
+                padding: "6px 8px 6px 16px",
+                fontSize: "13px",
+                color: "var(--noir-text)",
+                boxShadow: "var(--shadow-md)",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                maxWidth: "100%",
+              }}
+            >
+              <span>📍 {banner.text}</span>
+              {banner.add && (
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setShowAdd(true)}
+                  disabled={!online}
+                  style={{ flexShrink: 0 }}
+                >
+                  + Add place
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        {banner && (
+        {toast && (
           <div
+            role="status"
+            className="animate-fade-up"
             style={{
-              alignSelf: "center",
-              pointerEvents: "auto",
-              background: "rgba(255,253,249,0.94)",
-              backdropFilter: "blur(12px)",
-              border: "1px solid var(--noir-border-strong)",
+              position: "absolute",
+              top: "110px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 20,
+              background: "var(--noir-text)",
+              color: "var(--noir-surface)",
+              padding: "8px 16px",
               borderRadius: "99px",
-              padding: "6px 8px 6px 16px",
               fontSize: "13px",
-              color: "var(--noir-text)",
               boxShadow: "var(--shadow-md)",
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              maxWidth: "100%",
+              maxWidth: "calc(100% - 32px)",
             }}
           >
-            <span>📍 {banner.text}</span>
-            {banner.add && (
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => setShowAdd(true)}
-                disabled={!online}
-                style={{ flexShrink: 0 }}
-              >
-                + Add place
-              </button>
-            )}
+            {toast}
           </div>
+        )}
+
+        {!desktop && (
+          <PlaceListPanel
+            variant="sheet"
+            title={dayTitle}
+            rows={rows}
+            selectedId={selectedId}
+            onSelect={selectRow}
+            snap={sheetSnap}
+            onSnapChange={setSheetSnap}
+          />
+        )}
+
+        {selectedPlace && (desktop || sheetSnap === "peek") && (
+          <PlaceActionCard
+            key={selectedPlace.id}
+            place={selectedPlace}
+            placeItems={selectedItems}
+            stopNumbers={stopNumbers}
+            totalDays={totalDays}
+            currentUserId={currentUserId}
+            online={online}
+            saving={saving}
+            error={actionError}
+            bottom={cardBottom}
+            onVote={handleVote}
+            onPickDay={handlePickDay}
+            onComments={() => setCommentsFor(selectedPlace)}
+            onClose={() => selectPlace(null)}
+          />
         )}
       </div>
 
-      {selectedPlace && (
-        <PlaceActionCard
-          key={selectedPlace.id}
-          place={selectedPlace}
-          placeItems={selectedItems}
-          stopNumbers={stopNumbers}
-          totalDays={totalDays}
-          currentUserId={currentUserId}
-          online={online}
-          saving={saving}
-          error={actionError}
-          onVote={handleVote}
-          onPickDay={handlePickDay}
-          onComments={() => setCommentsFor(selectedPlace)}
-          onClose={() => selectPlace(null)}
+      {desktop && (
+        <PlaceListPanel
+          variant="side"
+          title={dayTitle}
+          rows={rows}
+          selectedId={selectedId}
+          onSelect={selectRow}
+          snap={sheetSnap}
+          onSnapChange={setSheetSnap}
         />
       )}
 

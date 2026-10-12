@@ -524,6 +524,26 @@ h1, h2, h3 {
   opacity: 1;
 }
 
+/* Ring that pulses out from a pin picked in the list. */
+.map-pin.is-pulsing .map-pin__badge {
+  position: relative;
+}
+
+.map-pin.is-pulsing .map-pin__badge::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 3px solid var(--gold);
+  animation: mapPinPulse 0.8s ease-out 2;
+  pointer-events: none;
+}
+
+@keyframes mapPinPulse {
+  from { transform: scale(1); opacity: 0.9; }
+  to   { transform: scale(2.2); opacity: 0; }
+}
+
 .map-chip-row::-webkit-scrollbar {
   display: none;
 }

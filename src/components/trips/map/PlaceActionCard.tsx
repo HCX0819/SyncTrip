@@ -17,6 +17,8 @@ interface Props {
   /** True while an add/move is being saved. */
   saving: boolean;
   error: string | null;
+  /** CSS `bottom` for the card. */
+  bottom: string;
   onVote: (value: VoteValue | undefined) => void;
   onPickDay: (day: number) => void;
   onComments: () => void;
@@ -33,6 +35,7 @@ export default function PlaceActionCard({
   online,
   saving,
   error,
+  bottom,
   onVote,
   onPickDay,
   onComments,
@@ -85,7 +88,7 @@ export default function PlaceActionCard({
       aria-label={place.title}
       style={{
         position: "absolute",
-        bottom: "calc(var(--tab-height) + 16px)",
+        bottom,
         left: "16px",
         right: "16px",
         maxWidth: 440,
