@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isGeocodableQuery } from "@/lib/geocode";
 import { createRateLimiter } from "@/lib/rateLimit";
-import { getToken, resolveBias, searchMapbox, searchNominatim, type Bias } from "@/lib/geocodeSearch";
+import { getToken, resolveBias, searchPlaces, type Bias } from "@/lib/geocodeSearch";
 import { safeFetch, SafeFetchError } from "@/lib/safeFetch";
 import { guessCategory, unfurl, type UnfurlData } from "@/lib/unfurl";
 import type { Category } from "@/lib/types";
@@ -40,9 +40,7 @@ type ServerClient = Awaited<ReturnType<typeof createClient>>;
 async function geocodeFirst(q: string, tripId: string) {
   if (!isGeocodableQuery(q)) return null;
   const token = getToken();
-  const search = token
-    ? (bias: Bias | null) => searchMapbox(q, token, bias)
-    : (bias: Bias | null) => searchNominatim(q, bias);
+  const search = (bias: Bias | null) => searchPlaces(q, token, bias);
   try {
     const bias = token ? await resolveBias(tripId, token) : null;
     let results = await search(bias);
