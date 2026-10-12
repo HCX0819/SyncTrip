@@ -1,6 +1,7 @@
 // Server-only: reads MAPBOX_TOKEN and uses the server Supabase client.
 // Shared by /api/geocode and /api/unfurl.
 import { Converter } from "opencc-js/cn2t";
+import { getGooglePlacesKey } from "@/lib/placePhotos";
 import { createClient } from "@/lib/supabase/server";
 
 export interface GeocodeFeature {
@@ -72,6 +73,31 @@ function localScriptVariant(q: string, bias: Bias | null) {
   return variant !== q ? variant : null;
 }
 
+function median(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+async function countryAt(lon: number, lat: number, token: string) {
+  const res = await fetch(
+    `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${lon}&latitude=${lat}&limit=1&access_token=${token}`
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { features?: GeocodeV6Feature[] };
+  return data.features?.[0]?.properties.context?.country?.country_code?.toLowerCase() ?? null;
+}
+
+async function biasFromDestination(destination: string, token: string): Promise<Bias | null> {
+  const res = await fetch(
+    `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(destination)}&access_token=${token}&limit=1&types=place,region,country,locality,district&language=en`
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { features?: GeocodeV6Feature[] };
+  const f = data.features?.[0];
+  const country = f?.properties.context?.country?.country_code?.toLowerCase();
+  return f && country ? { country, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] } : null;
+}
+
 export async function resolveBias(tripId: string, token: string): Promise<Bias | null> {
   const cached = biasCache.get(tripId);
   if (cached && cached.expires > Date.now()) return cached.bias;
@@ -79,24 +105,29 @@ export async function resolveBias(tripId: string, token: string): Promise<Bias |
   let bias: Bias | null = null;
   try {
     const supabase = await createClient();
-    const { data: trip } = await supabase
-      .from("trips")
-      .select("destination")
-      .eq("id", tripId)
-      .single();
-    const destination = trip?.destination?.trim();
-    if (destination) {
-      const res = await fetch(
-        `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(destination)}&access_token=${token}&limit=1&types=place,region,country,locality,district&language=en`
-      );
-      if (res.ok) {
-        const data = (await res.json()) as { features?: GeocodeV6Feature[] };
-        const f = data.features?.[0];
-        const country = f?.properties.context?.country?.country_code?.toLowerCase();
-        if (f && country) {
-          bias = { country, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] };
-        }
-      }
+    // Places already saved say where the trip is more reliably than free-text destinations
+    // like "Kansai", which Mapbox resolves to a town in India.
+    const { data: places } = await supabase
+      .from("saved_places")
+      .select("latitude, longitude")
+      .eq("trip_id", tripId)
+      .not("latitude", "is", null)
+      .not("longitude", "is", null)
+      .limit(200);
+    if (places && places.length > 0) {
+      const lon = median(places.map((p) => Number(p.longitude)));
+      const lat = median(places.map((p) => Number(p.latitude)));
+      const country = await countryAt(lon, lat, token);
+      if (country) bias = { country, lon, lat };
+    }
+    if (!bias) {
+      const { data: trip } = await supabase
+        .from("trips")
+        .select("destination")
+        .eq("id", tripId)
+        .single();
+      const destination = trip?.destination?.trim();
+      if (destination) bias = await biasFromDestination(destination, token);
     }
   } catch {
     bias = null;
@@ -151,6 +182,44 @@ export async function searchNominatim(q: string, bias: Bias | null): Promise<Geo
   }));
 }
 
+interface GooglePlace {
+  id: string;
+  displayName?: { text: string };
+  formattedAddress?: string;
+  location?: { latitude: number; longitude: number };
+}
+
+// Google knows landmarks by their English and Chinese names ("Fushimi Sake District")
+// where Mapbox and OpenStreetMap only have the local name. Paid, so only with a key.
+export async function searchGoogle(q: string, key: string, bias: Bias | null): Promise<GeocodeFeature[]> {
+  const body: Record<string, unknown> = { textQuery: q, pageSize: 5, languageCode: languagesFor(q).split(",")[0] };
+  if (bias) {
+    body.locationBias = { circle: { center: { latitude: bias.lat, longitude: bias.lon }, radius: 50000 } };
+  }
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": key,
+      "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(4000),
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { places?: GooglePlace[] };
+  return (data.places ?? []).flatMap((p) =>
+    p.location && p.displayName
+      ? [{
+          id: `google:${p.id}`,
+          place_name: p.formattedAddress ? `${p.displayName.text}, ${p.formattedAddress}` : p.displayName.text,
+          text: p.displayName.text,
+          geometry: { coordinates: [p.location.longitude, p.location.latitude] as [number, number] },
+        }]
+      : []
+  );
+}
+
 // Nominatim's usage policy allows at most one request per second from the whole app.
 // Wait briefly for a slot rather than skip, since results get cached for a day.
 let nextNominatimSlot = 0;
@@ -178,7 +247,9 @@ function distanceKm([lon1, lat1]: [number, number], [lon2, lat2]: [number, numbe
 export async function searchPlaces(q: string, token: string | null, bias: Bias | null) {
   const variant = localScriptVariant(q, bias);
   const queries = variant ? [q, variant] : [q];
+  const googleKey = getGooglePlacesKey();
   const batches = await Promise.all([
+    ...(googleKey ? [searchGoogle(q, googleKey, bias).catch(() => [])] : []),
     ...(token ? queries.map((query) => searchMapbox(query, token, bias).catch(() => [])) : []),
     searchNominatimThrottled(q, bias).catch(() => []),
   ]);
@@ -205,9 +276,55 @@ export async function searchPlaces(q: string, token: string | null, bias: Bias |
       if (f && !duplicate) merged.push(f);
     }
   }
-  return merged
-    .map((f, i) => ({ f, i, s: score(f) }))
+  const scored = merged.map((f, i) => ({ f, i, s: score(f) }));
+  // Once something matches, drop results that are neither named like the query nor
+  // near the trip (伏見 neighbourhoods across Japan for "Fushimi Sake").
+  const anyRelevant = scored.some(({ s }) => s > 0);
+  return scored
+    .filter(({ s }) => !anyRelevant || s > 0)
     .sort((a, b) => b.s - a.s || a.i - b.i)
     .slice(0, 6)
     .map(({ f }) => f);
+}
+
+// Generic words no map stores in a name ("Fushimi Sake District" is only findable as "Fushimi Sake").
+const GENERIC_WORDS = /\b(district|area|quarter|neighbou?rhood|old town|town|zone|street)\b/gi;
+
+function keyWords(q: string) {
+  return q
+    .replace(GENERIC_WORDS, " ")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length >= 3);
+}
+
+// A worldwide search fuzzy-matches anything ("Alice F. Keene District Park"), so keep only
+// results that contain one of the query's real words.
+function sharesKeyWord(f: GeocodeFeature, q: string) {
+  if (/[぀-ヿ㐀-䶿一-鿿]/.test(q)) return true;
+  const words = keyWords(q);
+  const haystack = `${f.text} ${f.place_name}`.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  return words.length === 0 || words.some((w) => haystack.includes(w));
+}
+
+export async function searchPlacesWithFallbacks(q: string, token: string | null, bias: Bias | null) {
+  // Near the trip every result is plausible; worldwide, keep only real matches.
+  const search = async (query: string, near: Bias | null) => {
+    const results = await searchPlaces(query, token, near);
+    return near ? results : results.filter((f) => sharesKeyWord(f, q));
+  };
+
+  let results = await search(q, bias);
+  if (results.length > 0) return results;
+
+  const stripped = q.replace(GENERIC_WORDS, " ").replace(/\s+/g, " ").trim();
+  if (stripped !== q && stripped.length >= 3) {
+    results = await search(stripped, bias);
+    if (results.length > 0) return results;
+  }
+
+  // A vague destination can resolve to the wrong country; don't let it hide everything.
+  return bias ? search(q, null) : results;
 }
