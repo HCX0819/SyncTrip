@@ -5,8 +5,7 @@ import { createRateLimiter, TtlCache } from "@/lib/rateLimit";
 import {
   getToken,
   resolveBias,
-  searchMapbox,
-  searchNominatim,
+  searchPlaces,
   type Bias,
   type GeocodeFeature,
 } from "@/lib/geocodeSearch";
@@ -29,9 +28,7 @@ export async function GET(request: NextRequest) {
   if (isRateLimited(user.id)) return Response.json([], { status: 429 });
 
   const token = getToken();
-  const search = token
-    ? (bias: Bias | null) => searchMapbox(q, token, bias)
-    : (bias: Bias | null) => searchNominatim(q, bias);
+  const search = (bias: Bias | null) => searchPlaces(q, token, bias);
 
   try {
     const bias = tripId && token ? await resolveBias(tripId, token) : null;
