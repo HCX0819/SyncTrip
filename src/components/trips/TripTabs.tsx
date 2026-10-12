@@ -380,6 +380,7 @@ export default function TripTabs({ trip: serverTrip, members: serverMembers, pla
           <MapView
             trip={trip}
             places={places}
+            members={members}
             currentUserId={currentUserId}
             syncTick={syncTick}
             onUpdate={refreshPlaces}

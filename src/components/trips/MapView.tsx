@@ -2,14 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GeoJSONSource, Map as MapLibreMap, Marker } from "maplibre-gl";
-import type { Category, ItineraryItem, SavedPlace, Trip, VoteValue } from "@/lib/types";
+import type { Category, ItineraryItem, SavedPlace, Trip, TripMember, VoteValue } from "@/lib/types";
 import { useOnlineStatus } from "@/components/layout/OfflineBanner";
 import { addPlaceToDay, bySortOrder, dayLabel, planMoveToDay, saveDayOrder, tripTotalDays } from "@/lib/itinerary";
 import { useItineraryItems } from "@/lib/useItineraryItems";
-import { formatTimeOfDay } from "@/lib/travel";
+import { formatLeg, formatTimeOfDay, type LngLat } from "@/lib/travel";
+import { useRouteLegs } from "@/lib/useRouteLegs";
+import { useTravelMode } from "@/lib/useTravelMode";
 import { setVote } from "@/lib/votes";
 import AddPlaceModal from "./AddPlaceModal";
 import PlaceCommentsSheet from "./PlaceCommentsSheet";
+import { TravelLeg, TravelModeToggle } from "./TravelLeg";
 import CategoryChips from "./map/CategoryChips";
 import DayStrip, { type DayFilter } from "./map/DayStrip";
 import PlaceActionCard from "./map/PlaceActionCard";
@@ -21,6 +24,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 interface Props {
   trip: Trip;
   places: SavedPlace[];
+  members: TripMember[];
   currentUserId: string;
   /** Bumped by the trip page's background sync; reloads the itinerary. */
   syncTick?: number;
@@ -59,6 +63,9 @@ interface MarkerEntry {
 }
 
 const ROUTE_SOURCE = "day-route";
+// Pins of the All view, clustered by MapLibre; drives the cluster bubbles.
+const CLUSTER_SOURCE = "place-clusters";
+const NEW_PIN_MS = 3000;
 const KYOTO: LngLatTuple = [135.7681, 35.0116];
 // Room for the overlays at the top and the place card at the bottom.
 const FIT_PADDING = { top: 110, bottom: 200, left: 50, right: 70 };
@@ -76,31 +83,116 @@ function routeGeoJSON(coords: LngLatTuple[]): GeoJSON.FeatureCollection {
   };
 }
 
-// Puts the day route on the map: adds the line (with a light casing for
-// contrast) or updates its data. A theme switch replaces the style and drops
-// these layers, so this also runs on every style load.
-// Call only once the style has loaded (isStyleLoaded() stays false while tiles load).
-function syncRoute(map: MapLibreMap, data: GeoJSON.FeatureCollection) {
-  const source = map.getSource<GeoJSONSource>(ROUTE_SOURCE);
+function pointsGeoJSON(specs: MarkerSpec[]): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: specs.map((s) => ({
+      type: "Feature",
+      properties: { key: s.key },
+      geometry: { type: "Point", coordinates: s.lngLat },
+    })),
+  };
+}
+
+interface LayerData {
+  route: GeoJSON.FeatureCollection;
+  points: GeoJSON.FeatureCollection;
+}
+
+/** Sets a GeoJSON source's data, adding the source if missing. True when it was added. */
+function syncGeoJSON(
+  map: MapLibreMap,
+  id: string,
+  data: GeoJSON.FeatureCollection,
+  options: { cluster?: boolean; clusterRadius?: number; clusterMaxZoom?: number } = {}
+): boolean {
+  const source = map.getSource<GeoJSONSource>(id);
   if (source) {
     source.setData(data);
-    return;
+    return false;
   }
-  map.addSource(ROUTE_SOURCE, { type: "geojson", data });
-  const layout = { "line-join": "round", "line-cap": "round" } as const;
-  map.addLayer({
-    id: `${ROUTE_SOURCE}-casing`,
-    type: "line",
-    source: ROUTE_SOURCE,
-    layout,
-    paint: { "line-color": "#ffffff", "line-width": 7, "line-opacity": 0.8 },
+  map.addSource(id, { type: "geojson", data, ...options });
+  return true;
+}
+
+// Puts the day route (a line with a light casing for contrast) and the
+// cluster source on the map, or updates their data. A theme switch replaces
+// the style and drops them, so this also runs on every style load. Call only
+// once the style has loaded (isStyleLoaded() stays false while tiles load).
+function syncLayers(map: MapLibreMap, { route, points }: LayerData) {
+  if (syncGeoJSON(map, ROUTE_SOURCE, route)) {
+    const layout = { "line-join": "round", "line-cap": "round" } as const;
+    map.addLayer({
+      id: `${ROUTE_SOURCE}-casing`,
+      type: "line",
+      source: ROUTE_SOURCE,
+      layout,
+      paint: { "line-color": "#ffffff", "line-width": 7, "line-opacity": 0.8 },
+    });
+    map.addLayer({
+      id: ROUTE_SOURCE,
+      type: "line",
+      source: ROUTE_SOURCE,
+      layout,
+      paint: { "line-color": ROUTE_COLOR, "line-width": 4 },
+    });
+  }
+  if (syncGeoJSON(map, CLUSTER_SOURCE, points, { cluster: true, clusterRadius: 48, clusterMaxZoom: 14 })) {
+    // Invisible: a source only loads while a layer uses it. Bubbles are DOM markers.
+    map.addLayer({
+      id: `${CLUSTER_SOURCE}-probe`,
+      type: "circle",
+      source: CLUSTER_SOURCE,
+      paint: { "circle-radius": 1, "circle-opacity": 0 },
+    });
+  }
+}
+
+/**
+ * Shows a numbered bubble per visible cluster and hides the pins inside
+ * clusters. Runs on every map render; reads only the map and marker refs.
+ */
+function updateClusters(
+  map: MapLibreMap,
+  lib: typeof import("maplibre-gl"),
+  pins: Map<string, MarkerEntry>,
+  bubbles: Map<number, Marker>
+) {
+  const source = map.getSource<GeoJSONSource>(CLUSTER_SOURCE);
+  if (!source || !map.isSourceLoaded(CLUSTER_SOURCE)) return;
+  const loose = new Set<string>();
+  const seen = new Set<number>();
+  for (const feature of map.querySourceFeatures(CLUSTER_SOURCE)) {
+    const props = feature.properties ?? {};
+    if (!props.cluster) {
+      if (typeof props.key === "string") loose.add(props.key);
+      continue;
+    }
+    const id = props.cluster_id as number;
+    if (seen.has(id) || feature.geometry.type !== "Point") continue;
+    seen.add(id);
+    if (bubbles.has(id)) continue;
+    const center = feature.geometry.coordinates as LngLatTuple;
+    const el = document.createElement("div");
+    el.className = "map-cluster";
+    el.textContent = String(props.point_count);
+    el.setAttribute("role", "button");
+    el.setAttribute("aria-label", `${props.point_count} places, zoom in`);
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const zoom = await source.getClusterExpansionZoom(id);
+      map.easeTo({ center, zoom: zoom + 0.5 });
+    });
+    bubbles.set(id, new lib.Marker({ element: el }).setLngLat(center).addTo(map));
+  }
+  bubbles.forEach((bubble, id) => {
+    if (seen.has(id)) return;
+    bubble.remove();
+    bubbles.delete(id);
   });
-  map.addLayer({
-    id: ROUTE_SOURCE,
-    type: "line",
-    source: ROUTE_SOURCE,
-    layout,
-    paint: { "line-color": ROUTE_COLOR, "line-width": 4 },
+  pins.forEach((pin, key) => {
+    // Only All-view pins ("p:") cluster; day stops are always shown.
+    if (key.startsWith("p:")) pin.el.style.display = loose.has(key) ? "" : "none";
   });
 }
 
@@ -116,11 +208,16 @@ function createMarkerElement(): { el: HTMLDivElement; badge: HTMLDivElement } {
   return { el, badge };
 }
 
-function paintMarker({ el, badge }: MarkerEntry, spec: MarkerSpec, selected: boolean, pulsing: boolean) {
+function paintMarker(
+  { el, badge }: MarkerEntry,
+  spec: MarkerSpec,
+  state: { selected: boolean; pulsing: boolean; isNew: boolean }
+) {
   const style = CATEGORY_STYLE[spec.category] ?? CATEGORY_STYLE.other;
   el.dataset.placeId = spec.placeId;
-  el.classList.toggle("is-selected", selected);
-  el.classList.toggle("is-pulsing", pulsing);
+  el.classList.toggle("is-selected", state.selected);
+  el.classList.toggle("is-pulsing", state.pulsing);
+  el.classList.toggle("is-new", state.isNew);
   el.classList.toggle("is-faded", !!spec.faded);
   el.setAttribute("role", "button");
   el.setAttribute("aria-label", spec.label ? `Stop ${spec.label}` : style.label);
@@ -129,11 +226,13 @@ function paintMarker({ el, badge }: MarkerEntry, spec: MarkerSpec, selected: boo
   badge.classList.toggle("is-numbered", !!spec.label);
 }
 
-export default function MapView({ trip, places, currentUserId, syncTick, onUpdate }: Props) {
+export default function MapView({ trip, places, members, currentUserId, syncTick, onUpdate }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const libRef = useRef<typeof import("maplibre-gl") | null>(null);
   const markersRef = useRef(new Map<string, MarkerEntry>());
+  const clusterBubblesRef = useRef(new Map<number, Marker>());
+  const legLabelsRef = useRef<Marker[]>([]);
   const [ready, setReady] = useState(false);
 
   const [theme, setTheme] = useState<MapTheme>(loadMapTheme);
@@ -149,6 +248,9 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
   // Pin that briefly pulses after it's picked from the list.
   const [pulseId, setPulseId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Places that arrived with a sync after the map opened: they drop in.
+  const [newIds, setNewIds] = useState<Set<string>>(() => new Set());
+  const [seenPlaces, setSeenPlaces] = useState(places);
   const online = useOnlineStatus();
   const desktop = useMediaQuery("(min-width: 900px)");
 
@@ -157,6 +259,21 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
   const day: DayFilter = dayFilter === "all" ? "all" : Math.min(dayFilter, totalDays);
 
   const placeById = useMemo(() => new Map(places.map((p) => [p.id, p])), [places]);
+
+  // New places since the last refresh (another member's, or one added here).
+  if (places !== seenPlaces) {
+    const known = new Set(seenPlaces.map((p) => p.id));
+    const fresh = places.filter((p) => !known.has(p.id));
+    setSeenPlaces(places);
+    if (fresh.length > 0) {
+      setNewIds(new Set(fresh.map((p) => p.id)));
+      const who = (p: SavedPlace) =>
+        p.added_by === currentUserId
+          ? "You"
+          : members.find((m) => m.user_id === p.added_by)?.profile?.display_name || "Someone";
+      setToast(fresh.length === 1 ? `${who(fresh[0])} added ${fresh[0].title}` : `${fresh.length} new places added`);
+    }
+  }
 
   // Itinerary stops per day (valid days only), in visit order.
   const stopsByDay = useMemo(() => {
@@ -258,8 +375,30 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
     [visibleEntries]
   );
 
+  // Travel legs between all of the day's stops, so times match the Itinerary tab.
+  const dayPoints = useMemo(
+    () => (day === "all" ? [] : entries.map((e): LngLat | null => (hasCoords(e.place) ? lngLatOf(e.place) : null))),
+    [day, entries]
+  );
+  const [travelMode, setTravelMode] = useTravelMode(trip, supabase);
+  const routeLegs = useRouteLegs(trip.id, travelMode, dayPoints);
+  // Legs line up with the list only while no category filter hides a stop.
+  const showLegs = day !== "all" && entries.length > 1 && visibleEntries.length === entries.length;
+  const legLabels = showLegs
+    ? routeLegs.legs.flatMap((leg, i) => {
+        const a = dayPoints[i];
+        const b = dayPoints[i + 1];
+        if (!leg || !a || !b) return [];
+        const text = `${routeLegs.exact ? "" : "~"}${formatLeg(leg, travelMode)}`;
+        return [{ at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as LngLatTuple, text }];
+      })
+    : [];
+  const legLabelsKey = JSON.stringify(legLabels);
+
   const route = useMemo(() => routeGeoJSON(day === "all" ? [] : specs.map((s) => s.lngLat)), [day, specs]);
-  const routeRef = useRef(route);
+  const clusterPoints = useMemo(() => pointsGeoJSON(day === "all" ? specs : []), [day, specs]);
+  const layerData = useMemo(() => ({ route, points: clusterPoints }), [route, clusterPoints]);
+  const layerDataRef = useRef(layerData);
   // False from a style (re)load until its style.load event.
   const styleReadyRef = useRef(false);
 
@@ -269,6 +408,7 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
     const markers = markersRef.current;
+    const bubbles = clusterBubblesRef.current;
 
     (async () => {
       try {
@@ -295,8 +435,9 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
         map.addControl(geolocate, "top-right");
         map.on("style.load", () => {
           styleReadyRef.current = true;
-          syncRoute(map, routeRef.current);
+          syncLayers(map, layerDataRef.current);
         });
+        map.on("render", () => updateClusters(map, lib, markersRef.current, clusterBubblesRef.current));
         libRef.current = lib;
         mapRef.current = map;
         // Keep the canvas in sync when the container is resized (e.g. window maximized)
@@ -313,6 +454,8 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
       resizeObserver?.disconnect();
       markers.forEach((m) => m.marker.remove());
       markers.clear();
+      bubbles.forEach((b) => b.remove());
+      bubbles.clear();
       mapRef.current?.remove();
       mapRef.current = null;
     };
@@ -327,11 +470,32 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
     mapRef.current?.setStyle(MAP_STYLES[theme], { diff: false });
   }, [ready, theme]);
 
-  // Route line for the selected day.
+  // Route line for the selected day, and the points to cluster in All.
   useEffect(() => {
-    routeRef.current = route;
-    if (ready && mapRef.current && styleReadyRef.current) syncRoute(mapRef.current, route);
-  }, [ready, route]);
+    layerDataRef.current = layerData;
+    const map = mapRef.current;
+    if (!ready || !map || !styleReadyRef.current) return;
+    syncLayers(map, layerData);
+    // Cluster ids change with the data; rebuild the bubbles on the next render.
+    clusterBubblesRef.current.forEach((b) => b.remove());
+    clusterBubblesRef.current.clear();
+    map.triggerRepaint();
+  }, [ready, layerData]);
+
+  // Travel time labels at the middle of each leg.
+  useEffect(() => {
+    const map = mapRef.current;
+    const lib = libRef.current;
+    legLabelsRef.current.forEach((m) => m.remove());
+    legLabelsRef.current = [];
+    if (!ready || !map || !lib) return;
+    for (const label of JSON.parse(legLabelsKey) as { at: LngLatTuple; text: string }[]) {
+      const el = document.createElement("div");
+      el.className = "map-leg-label";
+      el.textContent = label.text;
+      legLabelsRef.current.push(new lib.Marker({ element: el }).setLngLat(label.at).addTo(map));
+    }
+  }, [ready, legLabelsKey]);
 
   // Pins: add, update and remove in place.
   useEffect(() => {
@@ -363,9 +527,20 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
       } else {
         entry.marker.setLngLat(spec.lngLat);
       }
-      paintMarker(entry, spec, spec.placeId === selectedId, spec.placeId === pulseId);
+      paintMarker(entry, spec, {
+        selected: spec.placeId === selectedId,
+        pulsing: spec.placeId === pulseId,
+        isNew: newIds.has(spec.placeId),
+      });
     }
-  }, [ready, specs, selectedId, pulseId]);
+    updateClusters(map, lib, markers, clusterBubblesRef.current);
+  }, [ready, specs, selectedId, pulseId, newIds]);
+
+  useEffect(() => {
+    if (newIds.size === 0) return;
+    const timer = setTimeout(() => setNewIds(new Set()), NEW_PIN_MS);
+    return () => clearTimeout(timer);
+  }, [newIds]);
 
   useEffect(() => {
     if (!pulseId) return;
@@ -561,6 +736,18 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
                 }}
               />
             </div>
+            {day !== "all" && (
+              <div
+                style={{
+                  flexShrink: 0,
+                  background: "rgba(255,253,249,0.94)",
+                  borderRadius: "99px",
+                  boxShadow: "var(--shadow-sm)",
+                }}
+              >
+                <TravelModeToggle mode={travelMode} onChange={setTravelMode} />
+              </div>
+            )}
           </div>
 
           <div style={{ pointerEvents: "auto", minWidth: 0, alignSelf: "flex-start", maxWidth: "100%" }}>
@@ -631,6 +818,11 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
             rows={rows}
             selectedId={selectedId}
             onSelect={selectRow}
+            between={
+              showLegs
+                ? (i) => <TravelLeg leg={routeLegs.legs[i] ?? null} mode={travelMode} exact={routeLegs.exact} />
+                : undefined
+            }
             snap={sheetSnap}
             onSnapChange={setSheetSnap}
           />
@@ -663,6 +855,11 @@ export default function MapView({ trip, places, currentUserId, syncTick, onUpdat
           rows={rows}
           selectedId={selectedId}
           onSelect={selectRow}
+          between={
+            showLegs
+              ? (i) => <TravelLeg leg={routeLegs.legs[i] ?? null} mode={travelMode} exact={routeLegs.exact} />
+              : undefined
+          }
           snap={sheetSnap}
           onSnapChange={setSheetSnap}
         />
