@@ -1,10 +1,11 @@
-// A static map centred on a pin, built from the same Google raster tiles as
-// MapView. Used as the cover of a place that has a location but no photo.
+// A static map centred on a pin, built from OpenStreetMap raster tiles (the
+// main map's OpenFreeMap styles are vector-only, and a WebGL map per card is
+// too heavy). Used as the cover of a place that has a location but no photo.
 
 const TILE = 256;
 const ZOOM = 16;
-// Enough tiles around the centre to fill a card up to ~1280 × 768 px.
-const COLS = [-2, -1, 0, 1, 2];
+// Enough tiles around the centre to fill a card up to ~768 × 512 px.
+const COLS = [-1, 0, 1];
 const ROWS = [-1, 0, 1];
 
 function worldPixel(lat: number, lng: number) {
@@ -23,9 +24,9 @@ export default function MiniMap({ lat, lng }: { lat: number; lng: number }) {
   const max = 2 ** ZOOM;
 
   return (
-    <div aria-hidden style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#e8e4dc" }}>
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden", background: "#e8e4dc" }}>
       {/* Origin at the card's centre; tiles are placed relative to the pin. */}
-      <div style={{ position: "absolute", left: "50%", top: "50%" }}>
+      <div aria-hidden style={{ position: "absolute", left: "50%", top: "50%" }}>
         {ROWS.flatMap((dy) =>
           COLS.map((dx) => {
             const tx = (((tileX + dx) % max) + max) % max;
@@ -40,7 +41,7 @@ export default function MiniMap({ lat, lng }: { lat: number; lng: number }) {
                   top: ty * TILE - y,
                   width: TILE,
                   height: TILE,
-                  backgroundImage: `url(https://mt${(tx + ty) % 4}.google.com/vt/lyrs=m&hl=en&x=${tx}&y=${ty}&z=${ZOOM})`,
+                  backgroundImage: `url(https://tile.openstreetmap.org/${ZOOM}/${tx}/${ty}.png)`,
                   backgroundSize: "cover",
                 }}
               />
@@ -60,6 +61,19 @@ export default function MiniMap({ lat, lng }: { lat: number; lng: number }) {
           📍
         </div>
       </div>
+      {/* Required by the OSM tile policy. Bottom-right: the top corners hold badges. */}
+      <span
+        style={{
+          position: "absolute",
+          bottom: 4,
+          right: 6,
+          zIndex: 1,
+          fontSize: "9px",
+          color: "rgba(255,255,255,0.85)",
+        }}
+      >
+        © OpenStreetMap
+      </span>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import EditPlaceModal from "./EditPlaceModal";
 import PlaceCommentsSheet from "./PlaceCommentsSheet";
 import { useOnlineStatus } from "@/components/layout/OfflineBanner";
+import { optimisticCounts, setVote } from "@/lib/votes";
 import MiniMap from "./MiniMap";
 
 interface Props {
@@ -26,7 +27,6 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
   const votes = place.votes ?? [];
   const myVote = votes.find((v) => v.user_id === currentUserId)?.value as VoteValue | undefined;
   const yaayCount = votes.filter((v) => v.value === "yaay").length;
-  const naayCount = votes.filter((v) => v.value === "naay").length;
   const isFavorite = memberCount > 0 && yaayCount > memberCount / 2;
   const [optimisticVote, setOptimisticVote] = useState<VoteValue | undefined>(myVote);
   const [showEdit, setShowEdit] = useState(false);
@@ -41,31 +41,13 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
     setOptimisticVote(newVote);
 
     startTransition(async () => {
-      if (newVote === undefined) {
-        await supabase
-          .from("votes")
-          .delete()
-          .eq("place_id", place.id)
-          .eq("user_id", currentUserId);
-      } else {
-        await supabase.from("votes").upsert(
-          { place_id: place.id, user_id: currentUserId, value: newVote },
-          { onConflict: "place_id,user_id" }
-        );
-      }
+      await setVote(supabase, place.id, currentUserId, newVote);
       onVoteChanged();
     });
   }
 
   // Displayed vote counts (optimistic)
-  const displayYaay =
-    yaayCount +
-    (optimisticVote === "yaay" && myVote !== "yaay" ? 1 : 0) -
-    (myVote === "yaay" && optimisticVote !== "yaay" ? 1 : 0);
-  const displayNaay =
-    naayCount +
-    (optimisticVote === "naay" && myVote !== "naay" ? 1 : 0) -
-    (myVote === "naay" && optimisticVote !== "naay" ? 1 : 0);
+  const { yaay: displayYaay, naay: displayNaay } = optimisticCounts(votes, currentUserId, optimisticVote);
 
   return (
     <>
