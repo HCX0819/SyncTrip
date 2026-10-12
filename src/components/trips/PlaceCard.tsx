@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import EditPlaceModal from "./EditPlaceModal";
 import PlaceCommentsSheet from "./PlaceCommentsSheet";
 import { useOnlineStatus } from "@/components/layout/OfflineBanner";
+import MiniMap from "./MiniMap";
 
 interface Props {
   place: SavedPlace;
@@ -132,6 +133,9 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
             position: "relative",
           }}
         >
+          {!place.photo_url && place.latitude !== null && place.longitude !== null && (
+            <MiniMap lat={place.latitude} lng={place.longitude} />
+          )}
           <div
             style={{
               position: "absolute",
@@ -139,7 +143,7 @@ export default function PlaceCard({ place, currentUserId, memberCount, onVoteCha
               background: "linear-gradient(to bottom, transparent 55%, rgba(32,33,36,0.6) 100%)",
             }}
           />
-          {!place.photo_url && (
+          {!place.photo_url && (place.latitude === null || place.longitude === null) && (
             <div
               style={{
                 position: "absolute",
