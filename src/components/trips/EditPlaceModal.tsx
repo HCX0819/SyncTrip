@@ -6,6 +6,7 @@ import type { Category, SavedPlace } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { isGeocodableQuery } from "@/lib/geocode";
 import { uploadTripPhoto } from "@/lib/uploadPhoto";
+import PhotoSuggestions from "./PhotoSuggestions";
 import BookingFields, { bookingColumns, type BookingValue } from "./BookingFields";
 
 interface Props {
@@ -288,6 +289,19 @@ export default function EditPlaceModal({ place, onClose, onSaved }: Props) {
                   }}
                 />
               </div>
+            </div>
+            <div style={{ marginTop: "10px" }}>
+              <PhotoSuggestions
+                name={form.title}
+                lat={form.latitude}
+                lng={form.longitude}
+                selectedUrl={form.photo_url}
+                onSelect={(url) => {
+                  setForm((prev) => ({ ...prev, photo_url: url }));
+                  setPhotoPreview(url || null);
+                }}
+                startCollapsed={!!place.photo_url}
+              />
             </div>
             <input
               ref={fileInputRef}

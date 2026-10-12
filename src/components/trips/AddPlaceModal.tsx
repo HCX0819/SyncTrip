@@ -6,6 +6,7 @@ import type { Category } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { isGeocodableQuery } from "@/lib/geocode";
 import { uploadTripPhoto } from "@/lib/uploadPhoto";
+import PhotoSuggestions from "./PhotoSuggestions";
 import BookingFields, { bookingColumns, type BookingValue } from "./BookingFields";
 import { extractUrl } from "@/lib/extractUrl";
 import type { UnfurlResult } from "@/app/api/unfurl/route";
@@ -395,6 +396,19 @@ export default function AddPlaceModal({ tripId, onClose, onSaved, initialUrl }: 
                   }}
                 />
               </div>
+            </div>
+            <div style={{ marginTop: "10px" }}>
+              <PhotoSuggestions
+                name={form.title}
+                lat={form.latitude}
+                lng={form.longitude}
+                selectedUrl={form.photo_url}
+                onSelect={(url) => {
+                  setForm((prev) => ({ ...prev, photo_url: url }));
+                  setPhotoPreview(url || null);
+                }}
+                autoPick
+              />
             </div>
             <input
               ref={fileInputRef}

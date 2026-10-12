@@ -58,6 +58,7 @@ In Vercel → Project → Settings → Environment Variables, set each variable 
 | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | staging project | production project |
 | `MAPBOX_TOKEN` | Mapbox token (optional — falls back to Nominatim) | Mapbox token, URL-restricted |
+| `GOOGLE_PLACES_KEY` | optional (photo suggestions use Wikipedia without it) | Places API (New) key, API-restricted; billed per lookup |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN (optional) | Sentry DSN |
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | optional | set to upload source maps |
 
