@@ -473,6 +473,61 @@ h1, h2, h3 {
   height: 40px !important;
 }
 
+/* ── Map pins ───────────────────────────────────────────────── */
+/* .map-pin is positioned by MapLibre (it owns `transform`); visuals live on the badge. */
+.map-pin {
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+}
+
+.map-pin.is-selected {
+  z-index: 2;
+}
+
+.map-pin__badge {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #fff;
+  border: 2.5px solid #fff;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s;
+}
+
+.map-pin__badge.is-numbered {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.map-pin:hover .map-pin__badge {
+  transform: scale(1.2);
+}
+
+.map-pin.is-selected .map-pin__badge {
+  transform: scale(1.3);
+  box-shadow: 0 0 0 4px var(--gold-ring), 0 3px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* Saved but not on any day. */
+.map-pin.is-faded .map-pin__badge {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.map-pin.is-faded:hover .map-pin__badge,
+.map-pin.is-faded.is-selected .map-pin__badge {
+  opacity: 1;
+}
+
+.map-chip-row::-webkit-scrollbar {
+  display: none;
+}
+
 /* ── Google Maps chip/pill ──────────────────────────────────── */
 .gm-chip {
   display: inline-flex;

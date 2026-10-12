@@ -26,7 +26,16 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { Trip, SavedPlace, ItineraryItem } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
-import { tripDayCount, tripDayDate } from "@/lib/dates";
+import { tripDayDate } from "@/lib/dates";
+import {
+  ITINERARY_SELECT,
+  addPlaceToDay,
+  bySortOrder,
+  dayLabel as tripDayLabel,
+  planMoveToDay,
+  saveDayOrder,
+  tripTotalDays,
+} from "@/lib/itinerary";
 import { useOnlineStatus } from "@/components/layout/OfflineBanner";
 import { formatSavedAt, loadTripSnapshot, saveTripSnapshot } from "@/lib/tripSnapshot";
 import { googleCalendarUrl, type CalendarItem } from "@/lib/ics";
@@ -62,9 +71,6 @@ const collisionDetection: CollisionDetection = (args) => {
   });
 };
 
-const bySortOrder = (a: ItineraryItem, b: ItineraryItem) =>
-  a.sort_order - b.sort_order || a.id.localeCompare(b.id);
-
 // "⚠ Closed on Mondays" when the place's closed_days include the day's weekday.
 function closedWarning(place: SavedPlace, date: Date | null): string | null {
   if (!date || !place.closed_days?.includes(date.getDay())) return null;
@@ -94,7 +100,7 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
   const pendingSyncRef = useRef(false);
 
   // Default 3 days when dates are missing; capped at 30.
-  const totalDays = Math.max(1, Math.min(tripDayCount(trip.start_date, trip.end_date) ?? 3, 30));
+  const totalDays = tripTotalDays(trip);
   const currentDay = Math.min(activeDay, totalDays);
 
   const sensors = useSensors(
@@ -106,7 +112,7 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
   const fetchItems = useCallback(async () => {
     const { data } = await supabase
       .from("itinerary_items")
-      .select("*, place:saved_places(*)")
+      .select(ITINERARY_SELECT)
       .eq("trip_id", trip.id)
       .order("sort_order", { ascending: true });
     return (data as ItineraryItem[] | null) ?? null;
@@ -191,12 +197,7 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
     .filter((i) => (i.day_index < 1 || i.day_index > totalDays) && placeFor(i))
     .sort((a, b) => a.day_index - b.day_index || bySortOrder(a, b));
 
-  const dayLabel = (day: number) => {
-    const date = tripDayDate(trip.start_date, day);
-    return date
-      ? `Day ${day} · ${date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}`
-      : `Day ${day}`;
-  };
+  const dayLabel = (day: number) => tripDayLabel(trip.start_date, day);
   const dayOptions = Array.from({ length: totalDays }, (_, i) => ({
     day: i + 1,
     label: dayLabel(i + 1),
@@ -209,11 +210,7 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
     setItems(next);
     setError(null);
     savingRef.current += 1;
-    const { error: rpcError } = await supabase.rpc("reorder_itinerary_day", {
-      p_trip_id: trip.id,
-      p_day_index: day,
-      p_item_ids: orderedIds,
-    });
+    const rpcError = await saveDayOrder(supabase, trip.id, day, orderedIds);
     savingRef.current -= 1;
     if (rpcError) {
       setItems(previous);
@@ -239,15 +236,8 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
 
   // Moves an item to the end of `targetDay`.
   function moveToDay(itemId: string, targetDay: number) {
-    const item = items.find((i) => i.id === itemId);
-    if (!item || item.day_index === targetDay) return;
-    const targetIds = dayItems(targetDay).map((i) => i.id);
-    const orderedIds = [...targetIds, itemId];
-    const position = new Map(orderedIds.map((id, idx) => [id, idx + 1]));
-    const next = items.map((i) =>
-      position.has(i.id) ? { ...i, day_index: targetDay, sort_order: position.get(i.id)! } : i
-    );
-    persistDay(next, targetDay, orderedIds);
+    const plan = planMoveToDay(items, itemId, targetDay);
+    if (plan) persistDay(plan.next, targetDay, plan.orderedIds);
   }
 
   function endDrag() {
@@ -302,24 +292,9 @@ export default function ItineraryView({ trip, places, onUpdate, syncTick }: Prop
 
   async function assignPlaceToDay(placeId: string, dayIndex: number) {
     startTransition(async () => {
-      const nextSortOrder =
-        items
-          .filter((i) => i.day_index === dayIndex)
-          .reduce((max, i) => Math.max(max, i.sort_order), 0) + 1;
-
-      const { data, error } = await supabase
-        .from("itinerary_items")
-        .insert({
-          trip_id: trip.id,
-          place_id: placeId,
-          day_index: dayIndex,
-          sort_order: nextSortOrder,
-        })
-        .select("*, place:saved_places(*)")
-        .single();
-
-      if (!error && data) {
-        setItems((prev) => [...prev, data as ItineraryItem]);
+      const added = await addPlaceToDay(supabase, trip.id, placeId, dayIndex, items);
+      if (added) {
+        setItems((prev) => [...prev, added]);
         setShowAssignModal(false);
         onUpdate();
       }
