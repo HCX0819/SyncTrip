@@ -377,7 +377,14 @@ export default function TripTabs({ trip: serverTrip, members: serverMembers, pla
           />
         )}
         {activeTab === "map" && (
-          <MapView places={places} />
+          <MapView
+            trip={trip}
+            places={places}
+            members={members}
+            currentUserId={currentUserId}
+            syncTick={syncTick}
+            onUpdate={refreshPlaces}
+          />
         )}
         {activeTab === "itinerary" && (
           <ItineraryView trip={trip} places={places} onUpdate={refreshPlaces} syncTick={syncTick} />
